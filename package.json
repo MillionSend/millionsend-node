@@ -1,0 +1,13 @@
+{
+  "name": "millionsend",
+  "version": "0.0.1",
+  "description": "Official Node.js SDK for MillionSend — the open-source email platform. Under active development; API coming soon.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md", "LICENSE"],
+  "keywords": ["email", "millionsend", "ses", "transactional-email"],
+  "homepage": "https://github.com/MillionSend",
+  "repository": { "type": "git", "url": "git+https://github.com/MillionSend/millionsend-node.git" },
+  "license": "MIT",
+  "engines": { "node": ">=18" }
+}
