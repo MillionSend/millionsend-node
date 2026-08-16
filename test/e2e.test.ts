@@ -14,8 +14,12 @@ import { MillionSend } from "../src/index.js";
 const apiKey = process.env.MILLIONSEND_API_KEY;
 const run = apiKey ? describe : describe.skip;
 
+// describe.skip still executes this callback at collection time, so the client
+// must not be constructed unless the key is present — a throwing constructor
+// here would fail the whole suite instead of skipping it. The null stand-in is
+// safe: without a key the suite is skipped and no test body ever touches it.
 run("e2e: audiences + contacts lifecycle", () => {
-  const ms = new MillionSend(apiKey);
+  const ms = apiKey ? new MillionSend(apiKey) : (null as unknown as MillionSend);
   const createdAudiences: string[] = [];
 
   afterAll(async () => {

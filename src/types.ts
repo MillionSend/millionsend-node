@@ -96,7 +96,11 @@ export interface RemoveAudienceResponse {
 
 // ---- contacts ------------------------------------------------------------
 export interface CreateContactOptions {
-  /** Omit to target the team's default (top-level /contacts still needs one). */
+  /**
+   * The audience to create the contact in. The API requires it — omitting it
+   * posts to /contacts, which always answers 422 "audience_id is required"
+   * (kept optional here only to mirror resend's shape).
+   */
   audienceId?: string;
   email: string;
   firstName?: string;

@@ -69,6 +69,15 @@ describe("request wiring", () => {
       { idempotencyKey: "key-123" },
     );
     expect(calls[0]?.headers["Idempotency-Key"]).toBe("key-123");
+    // The negative half of the guard: no other verb or resource carries the
+    // header — only the two send surfaces are wired to it.
+    await ms.emails.get("e1");
+    await ms.contacts.update({ id: "c1", unsubscribed: true });
+    await ms.audiences.remove("a1");
+    for (const call of calls.slice(1)) {
+      expect(call.headers["Idempotency-Key"]).toBeUndefined();
+    }
+    expect(calls).toHaveLength(4);
   });
 
   it("returns { data } on 2xx", async () => {
