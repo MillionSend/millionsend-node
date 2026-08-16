@@ -1,13 +1,38 @@
 {
   "name": "millionsend",
-  "version": "0.0.1",
-  "description": "Official Node.js SDK for MillionSend — the open-source email platform. Under active development; API coming soon.",
-  "main": "index.js",
-  "types": "index.d.ts",
-  "files": ["index.js", "index.d.ts", "README.md", "LICENSE"],
-  "keywords": ["email", "millionsend", "ses", "transactional-email"],
-  "homepage": "https://github.com/MillionSend",
-  "repository": { "type": "git", "url": "git+https://github.com/MillionSend/millionsend-node.git" },
+  "version": "0.1.0",
+  "description": "Official MillionSend SDK for Node.js — a Resend-compatible email API you can self-host.",
+  "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=18" }
+  "author": "MillionSend",
+  "homepage": "https://github.com/MillionSend/millionsend/tree/main/sdks/node",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MillionSend/millionsend.git",
+    "directory": "sdks/node"
+  },
+  "keywords": ["millionsend", "resend", "email", "ses", "sdk", "transactional", "broadcast"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
 }
