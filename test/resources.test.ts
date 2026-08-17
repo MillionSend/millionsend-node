@@ -29,39 +29,20 @@ describe("batch", () => {
   });
 });
 
-describe("audiences", () => {
-  it("covers create/get/list/remove", async () => {
-    const { ms, calls } = makeClient();
-    await ms.audiences.create({ name: "Users" });
-    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/audiences" });
-    expect(calls[0]?.body).toEqual({ name: "Users" });
-    await ms.audiences.get("a1");
-    expect(pathOf(calls[1])).toBe("/audiences/a1");
-    await ms.audiences.list({ limit: 10 });
-    expect(pathOf(calls[2])).toBe("/audiences?limit=10");
-    await ms.audiences.remove("a1");
-    expect(calls[3]).toMatchObject({ method: "DELETE", url: "https://api.test/audiences/a1" });
-  });
-});
-
 describe("contacts", () => {
-  it("creates audience-scoped and top-level", async () => {
+  it("creates at /contacts", async () => {
     const { ms, calls } = makeClient();
-    await ms.contacts.create({ audienceId: "a1", email: "c@x.dev", firstName: "Ada" });
-    expect(pathOf(calls[0])).toBe("/audiences/a1/contacts");
+    await ms.contacts.create({ email: "c@x.dev", firstName: "Ada" });
+    expect(pathOf(calls[0])).toBe("/contacts");
     expect(calls[0]?.body).toEqual({ email: "c@x.dev", first_name: "Ada" });
-    await ms.contacts.create({ email: "c@x.dev" });
-    expect(pathOf(calls[1])).toBe("/contacts");
   });
 
-  it("addresses by string id, email, and scoped id", async () => {
+  it("addresses by string id and by email", async () => {
     const { ms, calls } = makeClient();
     await ms.contacts.get("c1");
     expect(pathOf(calls[0])).toBe("/contacts/c1");
     await ms.contacts.get({ email: "c@x.dev" });
     expect(pathOf(calls[1])).toBe(`/contacts/${encodeURIComponent("c@x.dev")}`);
-    await ms.contacts.get({ audienceId: "a1", id: "c1" });
-    expect(pathOf(calls[2])).toBe("/audiences/a1/contacts/c1");
   });
 
   it("update sends only provided keys (null clears)", async () => {
@@ -75,8 +56,8 @@ describe("contacts", () => {
     const { ms, calls } = makeClient();
     await ms.contacts.remove({ email: "c@x.dev" });
     expect(calls[0]?.method).toBe("DELETE");
-    await ms.contacts.list({ audienceId: "a1", after: "cur" });
-    expect(pathOf(calls[1])).toBe("/audiences/a1/contacts?after=cur");
+    await ms.contacts.list({ after: "cur" });
+    expect(pathOf(calls[1])).toBe("/contacts?after=cur");
   });
 
   it("topics.update patches /contacts/:id/topics with the bare array", async () => {
@@ -93,10 +74,10 @@ describe("contacts", () => {
 describe("broadcasts", () => {
   it("covers the full lifecycle", async () => {
     const { ms, calls } = makeClient();
-    await ms.broadcasts.create({ audienceId: "a1", from: "a@x.dev", subject: "News", html: "<p>hi</p>" });
+    await ms.broadcasts.create({ segmentId: "s1", from: "a@x.dev", subject: "News", html: "<p>hi</p>" });
     expect(pathOf(calls[0])).toBe("/broadcasts");
     expect(calls[0]?.body).toEqual({
-      audience_id: "a1",
+      segment_id: "s1",
       from: "a@x.dev",
       subject: "News",
       html: "<p>hi</p>",
@@ -132,18 +113,18 @@ describe("topics", () => {
 });
 
 describe("segments", () => {
-  it("covers create/get/list/update/remove on /segments2", async () => {
+  it("covers create/get/list/update/remove on /segments", async () => {
     const { ms, calls } = makeClient();
     const filter = { match: "all" as const, conditions: [{ field: "email", op: "is_set" }] };
-    await ms.segments.create({ name: "Active", audienceId: "a1", filter });
-    expect(pathOf(calls[0])).toBe("/segments2");
-    expect(calls[0]?.body).toEqual({ name: "Active", audience_id: "a1", filter });
+    await ms.segments.create({ name: "Active", filter });
+    expect(pathOf(calls[0])).toBe("/segments");
+    expect(calls[0]?.body).toEqual({ name: "Active", filter });
     await ms.segments.get("s1");
-    expect(pathOf(calls[1])).toBe("/segments2/s1");
+    expect(pathOf(calls[1])).toBe("/segments/s1");
     await ms.segments.list({ before: "cur" });
-    expect(pathOf(calls[2])).toBe("/segments2?before=cur");
+    expect(pathOf(calls[2])).toBe("/segments?before=cur");
     await ms.segments.update("s1", { name: "Renamed" });
-    expect(calls[3]).toMatchObject({ method: "PATCH", url: "https://api.test/segments2/s1" });
+    expect(calls[3]).toMatchObject({ method: "PATCH", url: "https://api.test/segments/s1" });
     await ms.segments.remove("s1");
     expect(calls[4]?.method).toBe("DELETE");
   });

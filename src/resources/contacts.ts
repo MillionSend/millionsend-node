@@ -19,12 +19,9 @@ function normalize(address: string | ContactAddress): ContactAddress {
   return typeof address === "string" ? { id: address } : address;
 }
 
-/** Contact path: email wins over id; audience-scoped when audienceId is set. */
+/** Contact path: email wins over id. */
 function contactPath(addr: ContactAddress): string {
-  const key = encodeURIComponent(addr.email ?? addr.id ?? "");
-  return addr.audienceId
-    ? `/audiences/${encodeURIComponent(addr.audienceId)}/contacts/${key}`
-    : `/contacts/${key}`;
+  return `/contacts/${encodeURIComponent(addr.email ?? addr.id ?? "")}`;
 }
 
 function createBody(o: CreateContactOptions) {
@@ -68,10 +65,7 @@ export class Contacts {
   }
 
   create(payload: CreateContactOptions): Promise<Result<ContactId>> {
-    const path = payload.audienceId
-      ? `/audiences/${encodeURIComponent(payload.audienceId)}/contacts`
-      : "/contacts";
-    return this.http.request({ method: "POST", path, body: createBody(payload) });
+    return this.http.request({ method: "POST", path: "/contacts", body: createBody(payload) });
   }
 
   get(address: string | ContactAddress): Promise<Result<Contact>> {
@@ -86,10 +80,7 @@ export class Contacts {
     return this.http.request({ method: "DELETE", path: contactPath(normalize(address)) });
   }
 
-  list(options?: ListOptions & { audienceId?: string }): Promise<Result<List<ContactListItem>>> {
-    const path = options?.audienceId
-      ? `/audiences/${encodeURIComponent(options.audienceId)}/contacts`
-      : "/contacts";
-    return this.http.request({ method: "GET", path, query: listQuery(options) });
+  list(options?: ListOptions): Promise<Result<List<ContactListItem>>> {
+    return this.http.request({ method: "GET", path: "/contacts", query: listQuery(options) });
   }
 }

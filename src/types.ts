@@ -70,38 +70,8 @@ export interface BatchResponse {
   data: CreateEmailResponse[];
 }
 
-// ---- audiences -----------------------------------------------------------
-export interface CreateAudienceOptions {
-  name: string;
-}
-
-export interface Audience {
-  object: string;
-  id: string;
-  name: string;
-  created_at?: string;
-}
-
-export interface AudienceListItem {
-  id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface RemoveAudienceResponse {
-  object: string;
-  id: string;
-  deleted: true;
-}
-
 // ---- contacts ------------------------------------------------------------
 export interface CreateContactOptions {
-  /**
-   * The audience to create the contact in. The API requires it — omitting it
-   * posts to /contacts, which always answers 422 "audience_id is required"
-   * (kept optional here only to mirror resend's shape).
-   */
-  audienceId?: string;
   email: string;
   firstName?: string;
   lastName?: string;
@@ -111,7 +81,6 @@ export interface CreateContactOptions {
 
 /** Address a contact by id or email (email wins if both are given). */
 export interface ContactAddress {
-  audienceId?: string;
   id?: string;
   email?: string;
 }
@@ -197,7 +166,6 @@ export interface RemoveTopicResponse {
 // ---- broadcasts ----------------------------------------------------------
 export interface CreateBroadcastOptions {
   name?: string;
-  audienceId?: string;
   segmentId?: string;
   from: string;
   subject: string;
@@ -209,7 +177,6 @@ export interface CreateBroadcastOptions {
 
 export interface UpdateBroadcastOptions {
   name?: string;
-  audienceId?: string;
   segmentId?: string;
   from?: string;
   subject?: string;
@@ -231,7 +198,6 @@ export interface BroadcastId {
 export interface BroadcastListItem {
   id: string;
   name: string | null;
-  audience_id: string | null;
   segment_id: string | null;
   status: string;
   created_at: string;
@@ -277,7 +243,6 @@ export interface SegmentFilter {
 
 export interface CreateSegmentOptions {
   name: string;
-  audienceId: string;
   filter: SegmentFilter;
 }
 
@@ -290,9 +255,9 @@ export interface Segment {
   object: "segment";
   id: string;
   name: string;
-  audience_id: string;
   filter: SegmentFilter;
   created_at: string;
+  /** Present on `get` only — the live count of matching contacts. */
   contact_count?: number;
 }
 

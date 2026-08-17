@@ -73,7 +73,7 @@ describe("request wiring", () => {
     // header — only the two send surfaces are wired to it.
     await ms.emails.get("e1");
     await ms.contacts.update({ id: "c1", unsubscribed: true });
-    await ms.audiences.remove("a1");
+    await ms.segments.remove("s1");
     for (const call of calls.slice(1)) {
       expect(call.headers["Idempotency-Key"]).toBeUndefined();
     }

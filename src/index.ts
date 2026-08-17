@@ -1,5 +1,4 @@
 import { HttpClient, type MillionSendOptions } from "./http.js";
-import { Audiences } from "./resources/audiences.js";
 import { Broadcasts } from "./resources/broadcasts.js";
 import { Contacts } from "./resources/contacts.js";
 import { Batch, Emails } from "./resources/emails.js";
@@ -27,7 +26,6 @@ import { Topics } from "./resources/topics.js";
 export class MillionSend {
   readonly emails: Emails;
   readonly batch: Batch;
-  readonly audiences: Audiences;
   readonly contacts: Contacts;
   readonly broadcasts: Broadcasts;
   readonly topics: Topics;
@@ -43,7 +41,6 @@ export class MillionSend {
     const http = new HttpClient(key, options);
     this.emails = new Emails(http);
     this.batch = new Batch(http);
-    this.audiences = new Audiences(http);
     this.contacts = new Contacts(http);
     this.broadcasts = new Broadcasts(http);
     this.topics = new Topics(http);

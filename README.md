@@ -76,21 +76,18 @@ await ms.batch.send([payloadA, payloadB], { idempotencyKey }); // up to 100
 Send options are camelCase and mapped to the wire: `replyTo` → `reply_to`,
 `scheduledAt` → `scheduled_at`. `to`/`cc`/`bcc`/`replyTo` accept a string or an array.
 
-### Audiences & contacts
+### Contacts
+
+Contacts are team-global — one list per team, no audiences.
 
 ```ts
-const { data: audience } = await ms.audiences.create({ name: "Registered users" });
-await ms.audiences.list({ limit: 20, after });
-await ms.audiences.get(id);
-await ms.audiences.remove(id);
-
-await ms.contacts.create({ audienceId, email: "ada@acme.dev", firstName: "Ada",
+await ms.contacts.create({ email: "ada@acme.dev", firstName: "Ada",
                            properties: { plan: "pro" } });
-await ms.contacts.get({ audienceId, email });     // by id or email (email wins)
+await ms.contacts.get({ email });                  // by id or email (email wins)
 await ms.contacts.get(contactId);                  // bare string works too
 await ms.contacts.update({ id, unsubscribed: true, firstName: null }); // null clears
 await ms.contacts.remove({ email });
-await ms.contacts.list({ audienceId, limit: 50 });
+await ms.contacts.list({ limit: 50 });
 
 // Topic subscriptions (granular unsubscribe)
 await ms.contacts.topics.update({ email, topics: [{ id: topicId, subscription: "opt_out" }] });
@@ -107,9 +104,11 @@ await ms.topics.remove(id);
 
 ### Broadcasts
 
+Target a `segmentId` and/or `topicId`; omit both to send to all contacts.
+
 ```ts
 const { data } = await ms.broadcasts.create({
-  audienceId, from: "Acme <news@acme.dev>", subject: "Launch",
+  segmentId, from: "Acme <news@acme.dev>", subject: "Launch",
   html: "<p>Hi {{{FIRST_NAME|there}}}</p>",
 });
 await ms.broadcasts.list();
@@ -122,13 +121,12 @@ await ms.broadcasts.remove(id);   // draft only
 
 ### Segments (MillionSend extension)
 
-Dynamic segments are a saved filter over an audience's contacts — a MillionSend
+Dynamic segments are a saved filter over the team's contacts — a MillionSend
 superset with no Resend equivalent.
 
 ```ts
 await ms.segments.create({
   name: "Pro plan",
-  audienceId,
   filter: { match: "all", conditions: [{ field: "property:plan", op: "equals", value: "pro" }] },
 });
 await ms.segments.get(id);   // includes a live contact_count
@@ -149,7 +147,7 @@ await ms.segments.remove(id);
 Method names and payloads match. Notes:
 
 - **Domains and API keys** are managed in the MillionSend dashboard, not via the API, so there are no `.domains`/`.apiKeys` resources here.
-- Resend's `.segments` is an alias of audiences; MillionSend's `.segments` is the distinct dynamic-filter feature. Use `.audiences` for a straight port.
+- **No audiences.** Contacts are team-global, so `.audiences` calls have no equivalent — drop them and call `.contacts` directly. For subsets of contacts, use `.segments` (dynamic filters) or topics.
 
 ## License
 

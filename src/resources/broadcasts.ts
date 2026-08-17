@@ -17,7 +17,6 @@ import type {
 function toWire(o: CreateBroadcastOptions | UpdateBroadcastOptions) {
   return {
     name: o.name,
-    audience_id: o.audienceId,
     segment_id: o.segmentId,
     from: o.from,
     subject: o.subject,
