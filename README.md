@@ -43,6 +43,7 @@ new MillionSend(apiKey?, {
   baseUrl?, // your instance URL; defaults to MILLIONSEND_BASE_URL, then http://localhost:3001
   fetch?,   // custom fetch implementation (proxies, tests, custom agents)
   userAgent?, // extra User-Agent suffix
+  timeoutMs?, // request deadline; defaults to 30,000 ms
 });
 ```
 

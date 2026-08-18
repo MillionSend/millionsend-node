@@ -1,6 +1,7 @@
 import { type ErrorResponse, type Result, toErrorResponse } from "./error.js";
 
 const DEFAULT_BASE_URL = "http://localhost:3001";
+const DEFAULT_TIMEOUT_MS = 30_000;
 const SDK_VERSION = "0.1.0";
 
 export interface MillionSendOptions {
@@ -14,6 +15,8 @@ export interface MillionSendOptions {
   fetch?: typeof fetch;
   /** Extra User-Agent suffix appended after the SDK's own token. */
   userAgent?: string;
+  /** Request deadline in milliseconds. Defaults to 30 seconds. */
+  timeoutMs?: number;
 }
 
 export interface RequestOptions {
@@ -43,6 +46,7 @@ export class HttpClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
   private readonly userAgent: string;
 
   constructor(apiKey: string, options: MillionSendOptions = {}) {
@@ -59,6 +63,10 @@ export class HttpClient {
       );
     }
     this.fetchImpl = chosen;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {
+      throw new Error("timeoutMs must be a positive finite number.");
+    }
     const base = `millionsend-node/${SDK_VERSION}`;
     this.userAgent = options.userAgent ? `${base} ${options.userAgent}` : base;
   }
@@ -70,7 +78,7 @@ export class HttpClient {
       Accept: "application/json",
       "User-Agent": this.userAgent,
     };
-    const init: RequestInit = { method, headers };
+    const init: RequestInit = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };
     if (body !== undefined && method !== "GET" && method !== "DELETE") {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);

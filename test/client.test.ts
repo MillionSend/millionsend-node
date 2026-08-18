@@ -29,6 +29,10 @@ describe("construction", () => {
     await ms.emails.get("e1");
     expect(calls[0]?.url).toBe("https://api.test/emails/e1");
   });
+
+  it("rejects invalid request deadlines", () => {
+    expect(() => new MillionSend("ms_test", { timeoutMs: 0 })).toThrow(/timeoutMs/);
+  });
 });
 
 describe("request wiring", () => {
@@ -40,6 +44,21 @@ describe("request wiring", () => {
     expect(h.Accept).toBe("application/json");
     expect(h["Content-Type"]).toBe("application/json");
     expect(h["User-Agent"]).toMatch(/^millionsend-node\/\d/);
+  });
+
+  it("applies a request deadline", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response("{}", { status: 200 });
+    });
+    const ms = new MillionSend("ms_test", {
+      baseUrl: "https://api.test",
+      fetch: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 5_000,
+    });
+
+    await ms.emails.get("e1");
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("maps camelCase inputs to the snake_case wire and omits undefined", async () => {
