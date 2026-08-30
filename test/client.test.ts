@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { MillionSend } from "../src/index.js";
 import { type Captured, makeClient } from "./helper.js";
@@ -32,6 +33,26 @@ describe("construction", () => {
 
   it("rejects invalid request deadlines", () => {
     expect(() => new MillionSend("ms_test", { timeoutMs: 0 })).toThrow(/timeoutMs/);
+  });
+
+  it("refuses a non-loopback http base URL unless allowInsecureHttp is set", () => {
+    expect(() => new MillionSend("ms_test", { baseUrl: "http://mail.example.com" })).toThrow(
+      /allowInsecureHttp/,
+    );
+    process.env.MILLIONSEND_BASE_URL = "http://mail.example.com";
+    expect(() => new MillionSend("ms_test")).toThrow(/allowInsecureHttp/);
+    delete process.env.MILLIONSEND_BASE_URL;
+    expect(
+      () => new MillionSend("ms_test", { baseUrl: "http://mail.example.com", allowInsecureHttp: true }),
+    ).not.toThrow();
+    expect(() => new MillionSend("ms_test", { baseUrl: "http://localhost:3001" })).not.toThrow();
+    expect(() => new MillionSend("ms_test", { baseUrl: "http://127.0.0.1:3001" })).not.toThrow();
+  });
+
+  it("keeps the API key out of inspect and JSON output", () => {
+    const ms = new MillionSend("ms_secret_key", { baseUrl: "https://api.test" });
+    expect(inspect(ms, { depth: 10 })).not.toContain("ms_secret_key");
+    expect(JSON.stringify(ms)).not.toContain("ms_secret_key");
   });
 });
 

@@ -44,11 +44,13 @@ new MillionSend(apiKey?, {
   fetch?,   // custom fetch implementation (proxies, tests, custom agents)
   userAgent?, // extra User-Agent suffix
   timeoutMs?, // request deadline; defaults to 30,000 ms
+  allowInsecureHttp?, // accept a non-loopback http:// baseUrl (default: refused)
 });
 ```
 
 - `apiKey` falls back to `process.env.MILLIONSEND_API_KEY`. Missing key → throws at construction.
 - `baseUrl` falls back to `process.env.MILLIONSEND_BASE_URL`. MillionSend is self-hosted, so **set this to your deployment in production.**
+- Plain `http://` is only accepted for loopback hosts (`localhost`, `127.0.0.1`, `::1`); any other `http://` URL throws at construction, since the API key is sent as a bearer header. Pass `allowInsecureHttp: true` to talk to a non-TLS instance elsewhere (e.g. inside a private network).
 
 ## Errors
 

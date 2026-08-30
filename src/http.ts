@@ -2,7 +2,7 @@ import { type ErrorResponse, type Result, toErrorResponse } from "./error.js";
 
 const DEFAULT_BASE_URL = "http://localhost:3001";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SDK_VERSION = "0.1.0";
+const SDK_VERSION = "0.2.0";
 
 export interface MillionSendOptions {
   /**
@@ -17,6 +17,12 @@ export interface MillionSendOptions {
   userAgent?: string;
   /** Request deadline in milliseconds. Defaults to 30 seconds. */
   timeoutMs?: number;
+  /**
+   * Plain `http://` is only accepted for loopback hosts, since the API key
+   * travels as a bearer header. Set to `true` to talk to a non-TLS instance
+   * elsewhere (e.g. inside a private network).
+   */
+  allowInsecureHttp?: boolean;
 }
 
 export interface RequestOptions {
@@ -32,6 +38,20 @@ interface DoRequest {
   idempotencyKey?: string | undefined;
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** True for an `http://` URL whose host is not loopback. Unparseable URLs are left to fetch. */
+function isInsecureHttpUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:") return false;
+  return !LOOPBACK_HOSTS.has(parsed.hostname) && !parsed.hostname.startsWith("127.");
+}
+
 function queryString(query: Record<string, string | number | undefined> | undefined): string {
   if (!query) return "";
   const params = new URLSearchParams();
@@ -43,18 +63,23 @@ function queryString(query: Record<string, string | number | undefined> | undefi
 }
 
 export class HttpClient {
-  private readonly apiKey: string;
+  readonly #apiKey: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly userAgent: string;
 
   constructor(apiKey: string, options: MillionSendOptions = {}) {
-    this.apiKey = apiKey;
+    this.#apiKey = apiKey;
     this.baseUrl = (options.baseUrl ?? process.env.MILLIONSEND_BASE_URL ?? DEFAULT_BASE_URL).replace(
       /\/+$/,
       "",
     );
+    if (!options.allowInsecureHttp && isInsecureHttpUrl(this.baseUrl)) {
+      throw new Error(
+        `Refusing to send the API key over plain http to ${this.baseUrl}. Use https, or set allowInsecureHttp: true.`,
+      );
+    }
     // Bind so a passed-in fetch keeps its own `this`; default to the global.
     const chosen = options.fetch ?? globalThis.fetch;
     if (!chosen) {
@@ -74,7 +99,7 @@ export class HttpClient {
   async request<T>({ method, path, body, query, idempotencyKey }: DoRequest): Promise<Result<T>> {
     const url = `${this.baseUrl}${path}${queryString(query)}`;
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.apiKey}`,
+      Authorization: `Bearer ${this.#apiKey}`,
       Accept: "application/json",
       "User-Agent": this.userAgent,
     };
