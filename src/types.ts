@@ -59,6 +59,8 @@ export interface Email {
   scheduled_at: string | null;
   message_id: string;
   last_event: string;
+  /** Best-practice score (0–10, one decimal); null when the email has no insights. */
+  score: number | null;
 }
 
 export interface CancelEmailResponse {
@@ -68,6 +70,61 @@ export interface CancelEmailResponse {
 
 export interface BatchResponse {
   data: CreateEmailResponse[];
+}
+
+// ---- insights & deliverability -------------------------------------------
+// Open sets: the API grows these across score versions, so each union keeps a
+// `(string & {})` escape hatch — known values autocomplete, future ones still
+// assign without a type error.
+export type ScoreBand = "excellent" | "good" | "needs_attention" | "at_risk" | (string & {});
+export type CheckSeverity = "critical" | "major" | "minor" | "info" | (string & {});
+export type CheckStatus =
+  | "pass"
+  | "fail"
+  | "passed_by_design"
+  | "not_applicable"
+  | "unknown"
+  | (string & {});
+export type GuardrailStatus = "ok" | "warning" | "paused" | (string & {});
+
+export interface InsightsCheck {
+  /** Check id from the MillionSend check catalog — an open set. */
+  id: string;
+  severity: CheckSeverity;
+  status: CheckStatus;
+  /** Points deducted from the score; 0 unless status is "fail". */
+  penalty: number;
+  detail?: Record<string, unknown>;
+}
+
+export interface EmailInsights {
+  object: "email_insights";
+  email_id: string;
+  /** Best-practice score, 0–10, one decimal. */
+  score: number;
+  score_version: number;
+  band: ScoreBand;
+  marketing: boolean;
+  html_size_bytes: number | null;
+  computed_at: string;
+  checks: InsightsCheck[];
+}
+
+/** Account score over the trailing window; null scores mean not enough data. */
+export interface Deliverability {
+  object: "deliverability";
+  score: number | null;
+  band: ScoreBand | null;
+  content_score: number | null;
+  outcome_score: number | null;
+  complaint_rate: number;
+  hard_bounce_rate: number;
+  emails_sent: number;
+  scored_recipients: number;
+  window_days: number;
+  insufficient_outcome_data: boolean;
+  guardrail_status: GuardrailStatus;
+  score_version: number;
 }
 
 // ---- contacts ------------------------------------------------------------

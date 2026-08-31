@@ -4,6 +4,7 @@ import type {
   CancelEmailResponse,
   CreateEmailResponse,
   Email,
+  EmailInsights,
   SendEmailOptions,
 } from "../types.js";
 
@@ -49,6 +50,14 @@ export class Emails {
   /** GET /emails/:id */
   get(id: string): Promise<Result<Email>> {
     return this.http.request({ method: "GET", path: `/emails/${encodeURIComponent(id)}` });
+  }
+
+  /** GET /emails/:id/insights — not_found until insights exist for the email. */
+  getInsights(id: string): Promise<Result<EmailInsights>> {
+    return this.http.request({
+      method: "GET",
+      path: `/emails/${encodeURIComponent(id)}/insights`,
+    });
   }
 
   /** POST /emails/:id/cancel — only scheduled, unsent emails. */

@@ -1,6 +1,7 @@
 import { HttpClient, type MillionSendOptions } from "./http.js";
 import { Broadcasts } from "./resources/broadcasts.js";
 import { Contacts } from "./resources/contacts.js";
+import { Deliverability } from "./resources/deliverability.js";
 import { Batch, Emails } from "./resources/emails.js";
 import { Segments } from "./resources/segments.js";
 import { Topics } from "./resources/topics.js";
@@ -30,6 +31,7 @@ export class MillionSend {
   readonly broadcasts: Broadcasts;
   readonly topics: Topics;
   readonly segments: Segments;
+  readonly deliverability: Deliverability;
 
   constructor(apiKey?: string, options?: MillionSendOptions) {
     const key = apiKey ?? process.env.MILLIONSEND_API_KEY;
@@ -45,6 +47,7 @@ export class MillionSend {
     this.broadcasts = new Broadcasts(http);
     this.topics = new Topics(http);
     this.segments = new Segments(http);
+    this.deliverability = new Deliverability(http);
   }
 }
 

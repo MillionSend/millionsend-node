@@ -71,7 +71,8 @@ if (error?.name === "not_found") { /* … */ }
 
 ```ts
 await ms.emails.send(payload, { idempotencyKey });   // POST /emails
-await ms.emails.get(id);                               // GET /emails/:id
+await ms.emails.get(id);                               // GET /emails/:id (includes a nullable `score`)
+await ms.emails.getInsights(id);                       // GET /emails/:id/insights (best-practice report)
 await ms.emails.cancel(id);                            // POST /emails/:id/cancel (scheduled only)
 await ms.batch.send([payloadA, payloadB], { idempotencyKey }); // up to 100
 ```
@@ -136,6 +137,17 @@ await ms.segments.get(id);   // includes a live contact_count
 await ms.segments.list();
 await ms.segments.update(id, { name: "Pro tier" });
 await ms.segments.remove(id);
+```
+
+### Deliverability (MillionSend extension)
+
+The account-level deliverability score over the trailing 30 days. Scores are
+0–10 (`null` until there is enough data); per-email reports live on
+`ms.emails.getInsights(id)`.
+
+```ts
+const { data } = await ms.deliverability.get();
+// data.score, data.band, data.complaint_rate, data.guardrail_status, …
 ```
 
 ## Migrating from Resend

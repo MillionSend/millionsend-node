@@ -2,7 +2,7 @@ import { type ErrorResponse, type Result, toErrorResponse } from "./error.js";
 
 const DEFAULT_BASE_URL = "http://localhost:3001";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SDK_VERSION = "0.2.0";
+const SDK_VERSION = "0.3.0";
 
 export interface MillionSendOptions {
   /**
