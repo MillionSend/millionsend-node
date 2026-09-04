@@ -3,7 +3,7 @@ import type { BatchValidation } from "./types.js";
 
 const DEFAULT_BASE_URL = "https://api.millionsend.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SDK_VERSION = "0.5.0";
+const SDK_VERSION = "0.6.0";
 
 export interface MillionSendOptions {
   /**

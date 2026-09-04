@@ -201,6 +201,33 @@ describe("contacts", () => {
     await ms.contacts.topics.list({ id: "c1" });
     expect(pathOf(calls[1])).toBe("/contacts/c1/topics");
   });
+
+  it("preferencesLink posts to /contacts/:id/preferences-link with no body, by id or email", async () => {
+    const { ms, calls } = makeClient({
+      body: { object: "preferences_link", contact: "c1", url: "https://app.test/unsubscribe/tok" },
+    });
+    const res = await ms.contacts.preferencesLink("c1");
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/contacts/c1/preferences-link",
+      body: undefined,
+    });
+    expect(res.data?.url).toBe("https://app.test/unsubscribe/tok");
+    await ms.contacts.preferencesLink({ email: "c+1@x.dev" });
+    expect(pathOf(calls[1])).toBe("/contacts/c%2B1%40x.dev/preferences-link");
+  });
+
+  it("batch.remove posts ids or emails to /contacts/batch/remove", async () => {
+    const { ms, calls } = makeClient({
+      body: { data: [{ object: "contact", contact: "c1", deleted: true }] },
+    });
+    const res = await ms.contacts.batch.remove({ ids: ["c1", "c2"] });
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/contacts/batch/remove" });
+    expect(calls[0]?.body).toEqual({ ids: ["c1", "c2"] });
+    expect(res.data?.data[0]).toEqual({ object: "contact", contact: "c1", deleted: true });
+    await ms.contacts.batch.remove({ emails: ["a@x.dev"] });
+    expect(calls[1]?.body).toEqual({ emails: ["a@x.dev"] });
+  });
 });
 
 describe("broadcasts", () => {
@@ -646,6 +673,24 @@ describe("webhooks", () => {
     expect(calls[3]?.body).toEqual({ events: ["email.opened"], status: "disabled" });
     await ms.webhooks.remove("w1");
     expect(calls[4]).toMatchObject({ method: "DELETE", url: "https://api.test/webhooks/w1" });
+  });
+
+  it("rotate posts to /webhooks/:id/rotate, sending {} when no option is given", async () => {
+    const { ms, calls } = makeClient({
+      body: {
+        object: "webhook",
+        id: "w1",
+        signing_secret: "whsec_new",
+        previous_secret_expires_at: "2026-01-02T00:00:00.000Z",
+      },
+    });
+    const res = await ms.webhooks.rotate("w1");
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/webhooks/w1/rotate" });
+    expect(calls[0]?.body).toEqual({});
+    expect(res.data?.signing_secret).toBe("whsec_new");
+    expect(res.data?.previous_secret_expires_at).toBe("2026-01-02T00:00:00.000Z");
+    await ms.webhooks.rotate("w1", { signingSecret: "whsec_mine", overlapHours: 0 });
+    expect(calls[1]?.body).toEqual({ signing_secret: "whsec_mine", overlap_hours: 0 });
   });
 });
 

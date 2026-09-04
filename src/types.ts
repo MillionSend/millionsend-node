@@ -249,6 +249,18 @@ export interface RemoveContactResponse {
   deleted: true;
 }
 
+export type BatchRemoveContactsOptions =
+  | { ids: string[]; emails?: never }
+  | { emails: string[]; ids?: never };
+
+/** The contact's hosted preference page (POST /contacts/:id/preferences-link). */
+export interface ContactPreferencesLink {
+  object: "preferences_link";
+  contact: string;
+  /** Signed, contact-scoped and non-expiring: hand it only to the contact. */
+  url: string;
+}
+
 export interface UpdateContactTopicsOptions extends ContactAddress {
   topics: ContactTopicUpdate[];
 }
@@ -268,6 +280,8 @@ export interface ContactTopic {
   subscription: TopicSubscription;
   /** False when `subscription` is only the topic's default. */
   explicit: boolean;
+  /** The hosted preference page lists public topics only. */
+  visibility: TopicVisibility;
 }
 
 /** What POST /contacts/batch does with an email that already belongs to a contact. */
@@ -624,6 +638,15 @@ export type WebhookEvent =
   | "quota.warning"
   | "quota.reached"
   | "quota.paused"
+  | "contact.created"
+  | "contact.updated"
+  | "contact.deleted"
+  | "contact.unsubscribed"
+  | "contact.resubscribed"
+  | "contact.topic_opt_in"
+  | "contact.topic_opt_out"
+  | "suppression.added"
+  | "suppression.removed"
   | (string & {});
 
 export type WebhookStatus = "enabled" | "disabled";
@@ -658,6 +681,22 @@ export interface WebhookListItem {
 export interface Webhook extends WebhookListItem {
   object: "webhook";
   signing_secret: string;
+  /** While set, deliveries are also signed with the secret this one replaced. */
+  previous_secret_expires_at: string | null;
+}
+
+export interface RotateWebhookSecretOptions {
+  /** New `whsec_…` secret to sign with; omit to mint one. */
+  signingSecret?: string;
+  /** Hours the previous secret keeps signing alongside the new one (0–72; the API defaults to 24). */
+  overlapHours?: number;
+}
+
+export interface RotateWebhookSecretResponse {
+  object: "webhook";
+  id: string;
+  signing_secret: string;
+  previous_secret_expires_at: string | null;
 }
 
 export interface WebhookId {

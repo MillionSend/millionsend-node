@@ -132,6 +132,11 @@ await ms.contacts.remove({ email });
 await ms.contacts.list({ limit: 50 });
 await ms.contacts.list({ segmentId });             // GET /segments/:id/contacts
 
+// Hosted preference page (MillionSend extension): the same page the unsubscribe links open.
+// The URL is a non-expiring, contact-scoped capability — show it only to the contact.
+const { data } = await ms.contacts.preferencesLink({ email }); // POST /contacts/:id/preferences-link
+data.url; // 422 when the instance cannot mint links (APP_BASE_URL unset)
+
 // Bulk create (MillionSend extension): up to 1000 per call
 const { data } = await ms.contacts.batch.create(items, {
   onConflict: "upsert",          // ?on_conflict=error|skip|upsert
@@ -141,6 +146,10 @@ data.data;   // [{ index, id, status: "created" | "updated" | "skipped" }]
 data.counts; // { created, updated, skipped, failed }
 data.errors; // permissive only
 
+// Bulk delete (MillionSend extension): up to 1000 per call, by ids or by emails
+const { data } = await ms.contacts.batch.remove({ emails }); // or { ids }
+data.data; // [{ object: "contact", contact, deleted: true }] — only the rows actually deleted
+
 // Segment membership
 await ms.contacts.segments.add({ email, segmentId });
 await ms.contacts.segments.remove({ id: contactId, segmentId });
@@ -148,7 +157,7 @@ await ms.contacts.segments.remove({ id: contactId, segmentId });
 // Topic subscriptions (granular unsubscribe)
 await ms.contacts.topics.update({ email, topics: [{ id: topicId, subscription: "opt_out" }] });
 const { data } = await ms.contacts.topics.list({ email }); // GET /contacts/:id/topics, unpaginated
-data.data; // [{ id, name, description, subscription: "opt_in" | "opt_out", explicit }]
+data.data; // [{ id, name, description, subscription: "opt_in" | "opt_out", explicit, visibility }]
            // `subscription` is the effective choice; `explicit: false` means it is the topic default
 ```
 
@@ -228,10 +237,19 @@ const { data } = await ms.webhooks.create({
 });
 data.signing_secret;
 await ms.webhooks.list();
-await ms.webhooks.get(id);   // includes signing_secret
+await ms.webhooks.get(id);   // includes signing_secret and previous_secret_expires_at
 await ms.webhooks.update(id, { status: "disabled" });
 await ms.webhooks.remove(id);
+
+// Rotate the signing secret (MillionSend extension). During `overlapHours` (0–72, default 24)
+// every delivery carries both signatures, so the receiver can switch without a gap.
+const { data } = await ms.webhooks.rotate(id, { overlapHours: 24 }); // or { signingSecret: "whsec_…" }
+data.signing_secret; data.previous_secret_expires_at; // null when the old secret is dropped at once
 ```
+
+Subscribable events include `email.*`, `deliverability.*`, `quota.*`, `contact.*`
+(`created`, `updated`, `deleted`, `unsubscribed`, `resubscribed`, `topic_opt_in`,
+`topic_opt_out`) and `suppression.added` / `suppression.removed`.
 
 ### API keys
 
@@ -309,8 +327,9 @@ match `resend`. Notes:
 - **Templates** cannot be sent yet: `emails.send({ template })` is forwarded and
   answered with `422`. `templates.publish` is a no-op (every save is live).
 - **MillionSend extensions** (no Resend counterpart): `segments`,
-  `deliverability`, `usage`, `emails.getInsights`, `contacts.batch`, and the
-  `origin` field on suppressions.
+  `deliverability`, `usage`, `emails.getInsights`, `contacts.batch`,
+  `contacts.preferencesLink`, `webhooks.rotate`, and the `origin` field on
+  suppressions.
 
 ## License
 

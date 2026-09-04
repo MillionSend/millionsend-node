@@ -7,6 +7,8 @@ import type {
   List,
   ListOptions,
   RemoveWebhookResponse,
+  RotateWebhookSecretOptions,
+  RotateWebhookSecretResponse,
   UpdateWebhookOptions,
   Webhook,
   WebhookId,
@@ -47,5 +49,17 @@ export class Webhooks {
 
   remove(id: string): Promise<Result<RemoveWebhookResponse>> {
     return this.http.request({ method: "DELETE", path: `/webhooks/${encodeURIComponent(id)}` });
+  }
+
+  /** POST /webhooks/:id/rotate — new signing secret; the previous one keeps signing for `overlapHours`. */
+  rotate(
+    id: string,
+    payload: RotateWebhookSecretOptions = {},
+  ): Promise<Result<RotateWebhookSecretResponse>> {
+    return this.http.request({
+      method: "POST",
+      path: `/webhooks/${encodeURIComponent(id)}/rotate`,
+      body: { signing_secret: payload.signingSecret, overlap_hours: payload.overlapHours },
+    });
   }
 }

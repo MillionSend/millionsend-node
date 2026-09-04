@@ -4,10 +4,12 @@ import { listQuery } from "../query.js";
 import type {
   AddContactSegmentResponse,
   BatchContactsResponse,
+  BatchRemoveContactsOptions,
   Contact,
   ContactAddress,
   ContactId,
   ContactListItem,
+  ContactPreferencesLink,
   ContactSegmentOptions,
   ContactTopic,
   CreateContactOptions,
@@ -90,7 +92,7 @@ export class ContactSegments {
   }
 }
 
-/** Bulk contact creation (MillionSend extension; Resend imports contacts via CSV only). */
+/** Bulk contact creation and deletion (MillionSend extension; Resend imports contacts via CSV only). */
 export class ContactsBatch {
   constructor(private readonly http: HttpClient) {}
 
@@ -105,6 +107,15 @@ export class ContactsBatch {
       query: { on_conflict: options.onConflict },
       body: payload.map(createBody),
       headers: { "x-batch-validation": options.batchValidation },
+    });
+  }
+
+  /** POST /contacts/batch/remove — by `ids` or by `emails` (1–1000); lists only the rows deleted. */
+  remove(options: BatchRemoveContactsOptions): Promise<Result<{ data: RemoveContactResponse[] }>> {
+    return this.http.request({
+      method: "POST",
+      path: "/contacts/batch/remove",
+      body: { ids: options.ids, emails: options.emails },
     });
   }
 }
@@ -134,6 +145,14 @@ export class Contacts {
 
   remove(address: string | ContactAddress): Promise<Result<RemoveContactResponse>> {
     return this.http.request({ method: "DELETE", path: contactPath(normalize(address)) });
+  }
+
+  /** POST /contacts/:id/preferences-link — the contact's hosted preference page URL (422 when the instance cannot mint links). */
+  preferencesLink(address: string | ContactAddress): Promise<Result<ContactPreferencesLink>> {
+    return this.http.request({
+      method: "POST",
+      path: `${contactPath(normalize(address))}/preferences-link`,
+    });
   }
 
   /** GET /contacts, or GET /segments/:segmentId/contacts when `segmentId` is given. */
