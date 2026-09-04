@@ -9,9 +9,11 @@ import type {
   ContactId,
   ContactListItem,
   ContactSegmentOptions,
+  ContactTopic,
   CreateContactOptions,
   CreateContactsBatchOptions,
   List,
+  ListContactTopicsOptions,
   ListContactsOptions,
   RemoveContactResponse,
   RemoveContactSegmentResponse,
@@ -55,12 +57,16 @@ export class ContactTopics {
   constructor(private readonly http: HttpClient) {}
 
   update(options: UpdateContactTopicsOptions): Promise<Result<UpdateContactTopicsResponse>> {
-    const key = encodeURIComponent(options.email ?? options.id ?? "");
     return this.http.request({
       method: "PATCH",
-      path: `/contacts/${key}/topics`,
+      path: `${contactPath(options)}/topics`,
       body: options.topics,
     });
+  }
+
+  /** GET /contacts/:id/topics — every team topic with the contact's effective subscription (unpaginated). */
+  list(options: ListContactTopicsOptions): Promise<Result<List<ContactTopic>>> {
+    return this.http.request({ method: "GET", path: `${contactPath(options)}/topics` });
   }
 }
 

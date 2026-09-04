@@ -1,15 +1,15 @@
 import { type ErrorResponse, type Result, toErrorResponse } from "./error.js";
 import type { BatchValidation } from "./types.js";
 
-const DEFAULT_BASE_URL = "http://localhost:3001";
+const DEFAULT_BASE_URL = "https://api.millionsend.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SDK_VERSION = "0.4.0";
+const SDK_VERSION = "0.5.0";
 
 export interface MillionSendOptions {
   /**
    * Your MillionSend instance URL (no trailing slash needed). Falls back to
-   * `MILLIONSEND_BASE_URL`, then `http://localhost:3001`. Self-hosted, so there
-   * is no cloud default — set this to your deployment in production.
+   * `MILLIONSEND_BASE_URL`, then MillionSend Cloud (`https://api.millionsend.com`).
+   * Self-hosted instances set their own origin here.
    */
   baseUrl?: string;
   /** Inject a fetch implementation (tests, proxies, custom agents). */

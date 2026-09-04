@@ -257,6 +257,19 @@ export interface UpdateContactTopicsResponse {
   id: string;
 }
 
+export type ListContactTopicsOptions = ContactAddress;
+
+/** One of the team's topics as seen by a contact (GET /contacts/:id/topics). */
+export interface ContactTopic {
+  id: string;
+  name: string;
+  description: string | null;
+  /** Effective choice: the contact's explicit one, else the topic's default. */
+  subscription: TopicSubscription;
+  /** False when `subscription` is only the topic's default. */
+  explicit: boolean;
+}
+
 /** What POST /contacts/batch does with an email that already belongs to a contact. */
 export type ContactOnConflict = "error" | "skip" | "upsert";
 

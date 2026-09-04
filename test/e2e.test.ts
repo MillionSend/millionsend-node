@@ -3,8 +3,8 @@ import { MillionSend } from "../src/index.js";
 
 /**
  * End-to-end smoke test against a real MillionSend instance. Opt-in: set
- * MILLIONSEND_API_KEY (a full-access key) and, if not localhost:3001,
- * MILLIONSEND_BASE_URL. It exercises the contact lifecycle, which needs no
+ * MILLIONSEND_API_KEY (a full-access key) and, unless targeting MillionSend
+ * Cloud, MILLIONSEND_BASE_URL. It exercises the contact lifecycle, which needs no
  * verified domain. Sending is not asserted here because it requires a
  * verified sender domain; point `from` at one and uncomment locally to check.
  *

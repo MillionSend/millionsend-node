@@ -177,6 +177,30 @@ describe("contacts", () => {
     expect(calls[0]).toMatchObject({ method: "PATCH", url: "https://api.test/contacts/c1/topics" });
     expect(calls[0]?.body).toEqual([{ id: "t1", subscription: "opt_out" }]);
   });
+
+  it("topics.list gets /contacts/:email/topics (encoded) and decodes the list envelope", async () => {
+    const list = {
+      object: "list",
+      has_more: false,
+      data: [
+        { id: "t1", name: "Insights", description: null, subscription: "opt_in", explicit: false },
+        { id: "t2", name: "Deals", description: "Offers", subscription: "opt_out", explicit: true },
+      ],
+    };
+    const { ms, calls } = makeClient({ body: list });
+    const res = await ms.contacts.topics.list({ email: "c+1@x.dev" });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: "https://api.test/contacts/c%2B1%40x.dev/topics",
+      body: undefined,
+    });
+    expect(res.error).toBeNull();
+    expect(res.data).toEqual(list);
+    expect(res.data?.data[1]?.explicit).toBe(true);
+
+    await ms.contacts.topics.list({ id: "c1" });
+    expect(pathOf(calls[1])).toBe("/contacts/c1/topics");
+  });
 });
 
 describe("broadcasts", () => {

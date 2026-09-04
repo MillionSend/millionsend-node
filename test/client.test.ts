@@ -31,6 +31,30 @@ describe("construction", () => {
     expect(calls[0]?.url).toBe("https://api.test/emails/e1");
   });
 
+  it("defaults the base URL to MillionSend Cloud; the env var and the option win in turn", async () => {
+    const prev = process.env.MILLIONSEND_BASE_URL;
+    delete process.env.MILLIONSEND_BASE_URL;
+    const calls: Captured[] = [];
+    const fetchImpl = vi.fn(async (url: string | URL) => {
+      calls.push({ url: String(url), method: "GET", headers: {}, body: undefined });
+      return new Response("{}", { status: 200 });
+    });
+    const fetch = fetchImpl as unknown as typeof globalThis.fetch;
+
+    await new MillionSend("ms_test", { fetch }).emails.get("e1");
+    expect(calls[0]?.url).toBe("https://api.millionsend.com/emails/e1");
+
+    process.env.MILLIONSEND_BASE_URL = "https://mail.env.test";
+    await new MillionSend("ms_test", { fetch }).emails.get("e1");
+    expect(calls[1]?.url).toBe("https://mail.env.test/emails/e1");
+
+    await new MillionSend("ms_test", { fetch, baseUrl: "https://mail.opt.test" }).emails.get("e1");
+    expect(calls[2]?.url).toBe("https://mail.opt.test/emails/e1");
+
+    if (prev === undefined) delete process.env.MILLIONSEND_BASE_URL;
+    else process.env.MILLIONSEND_BASE_URL = prev;
+  });
+
   it("rejects invalid request deadlines", () => {
     expect(() => new MillionSend("ms_test", { timeoutMs: 0 })).toThrow(/timeoutMs/);
   });
@@ -135,6 +159,17 @@ describe("request wiring", () => {
     const res = await ms.emails.send({ from: "a@x.dev", to: "b@x.dev", subject: "s", text: "t" });
     expect(res.data).toBeNull();
     expect(res.error).toEqual({ statusCode: 422, name: "validation_error", message: "bad" });
+  });
+
+  it("passes the all_recipients_suppressed 422 through by name", async () => {
+    const { ms } = makeClient({
+      status: 422,
+      body: { statusCode: 422, name: "all_recipients_suppressed", message: "All recipients are suppressed" },
+    });
+    const res = await ms.emails.send({ from: "a@x.dev", to: "b@x.dev", subject: "s", text: "t" });
+    expect(res.data).toBeNull();
+    expect(res.error?.name).toBe("all_recipients_suppressed");
+    expect(res.error?.statusCode).toBe(422);
   });
 
   it("surfaces a transport failure as statusCode null", async () => {

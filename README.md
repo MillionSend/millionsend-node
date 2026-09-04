@@ -3,8 +3,9 @@
 Official Node.js / TypeScript SDK for [MillionSend](https://github.com/MillionSend/millionsend) — a self-hostable, Resend-compatible email API on AWS SES.
 
 The API is wire-compatible with Resend, and this SDK deliberately mirrors the
-shape of `resend`, so migrating is mostly a find-and-replace: swap the import,
-the class name, and point `baseUrl` at your instance.
+shape of `resend`, so migrating is mostly a find-and-replace: swap the import
+and the class name. MillionSend Cloud works with just the key; a self-hosted
+instance sets its origin via `baseUrl`.
 
 ## Install
 
@@ -20,7 +21,7 @@ Requires Node.js 18+ (uses the global `fetch`).
 ```ts
 import { MillionSend } from "millionsend";
 
-const ms = new MillionSend("ms_123", { baseUrl: "https://mail.acme.dev" });
+const ms = new MillionSend("ms_123"); // Cloud; self-hosted: { baseUrl: "https://mail.acme.dev" }
 
 const { data, error } = await ms.emails.send({
   from: "Acme <onboarding@acme.dev>",
@@ -40,7 +41,7 @@ if (error) {
 
 ```ts
 new MillionSend(apiKey?, {
-  baseUrl?, // your instance URL; defaults to MILLIONSEND_BASE_URL, then http://localhost:3001
+  baseUrl?, // defaults to MILLIONSEND_BASE_URL, then MillionSend Cloud (https://api.millionsend.com)
   fetch?,   // custom fetch implementation (proxies, tests, custom agents)
   userAgent?, // extra User-Agent suffix
   timeoutMs?, // request deadline; defaults to 30,000 ms
@@ -49,7 +50,7 @@ new MillionSend(apiKey?, {
 ```
 
 - `apiKey` falls back to `process.env.MILLIONSEND_API_KEY`. Missing key → throws at construction.
-- `baseUrl` falls back to `process.env.MILLIONSEND_BASE_URL`. MillionSend is self-hosted, so **set this to your deployment in production.**
+- `baseUrl` falls back to `process.env.MILLIONSEND_BASE_URL`, then to MillionSend Cloud (`https://api.millionsend.com`). **Self-hosting? Set it to your instance's origin.**
 - Plain `http://` is only accepted for loopback hosts (`localhost`, `127.0.0.1`, `::1`); any other `http://` URL throws at construction, since the API key is sent as a bearer header. Pass `allowInsecureHttp: true` to talk to a non-TLS instance elsewhere (e.g. inside a private network).
 
 ## Errors
@@ -57,8 +58,12 @@ new MillionSend(apiKey?, {
 No method throws for an API error — every call resolves to `{ data, error }`.
 `error` is `null` on success; otherwise `{ name, message, statusCode }` where
 `name` is a stable snake_case code you can switch on (`validation_error`,
-`not_found`, `restricted_api_key`, `sending_paused`, …). Client-side and
-transport failures carry `statusCode: null`.
+`not_found`, `restricted_api_key`, `sending_paused`,
+`all_recipients_suppressed`, …). Client-side and transport failures carry
+`statusCode: null`.
+
+`emails.send` and `batch.send` answer `422 all_recipients_suppressed` when every
+`to` recipient is on the suppression list or opted out of the send's `topicId`.
 
 ```ts
 const { data, error } = await ms.emails.get(id);
@@ -142,6 +147,9 @@ await ms.contacts.segments.remove({ id: contactId, segmentId });
 
 // Topic subscriptions (granular unsubscribe)
 await ms.contacts.topics.update({ email, topics: [{ id: topicId, subscription: "opt_out" }] });
+const { data } = await ms.contacts.topics.list({ email }); // GET /contacts/:id/topics, unpaginated
+data.data; // [{ id, name, description, subscription: "opt_in" | "opt_out", explicit }]
+           // `subscription` is the effective choice; `explicit: false` means it is the topic default
 ```
 
 `contact.properties` on `get` is typed per property: `{ plan: { type: "string", value: "pro" } }`.
@@ -288,7 +296,7 @@ const { data } = await ms.usage.get();
 - import { Resend } from "resend";
 - const resend = new Resend("re_123");
 + import { MillionSend } from "millionsend";
-+ const ms = new MillionSend("ms_123", { baseUrl: "https://mail.acme.dev" });
++ const ms = new MillionSend("ms_123"); // self-hosted: add { baseUrl: "https://mail.acme.dev" }
 ```
 
 Method names, payloads and request options (`idempotencyKey`, `batchValidation`)
