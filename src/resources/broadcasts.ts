@@ -14,7 +14,7 @@ import type {
   UpdateBroadcastOptions,
 } from "../types.js";
 
-function toWire(o: CreateBroadcastOptions | UpdateBroadcastOptions) {
+function toWire(o: UpdateBroadcastOptions) {
   return {
     name: o.name,
     segment_id: o.segmentId,
@@ -23,6 +23,7 @@ function toWire(o: CreateBroadcastOptions | UpdateBroadcastOptions) {
     html: o.html,
     text: o.text,
     reply_to: o.replyTo,
+    preview_text: o.previewText,
     topic_id: o.topicId,
   };
 }
@@ -30,8 +31,13 @@ function toWire(o: CreateBroadcastOptions | UpdateBroadcastOptions) {
 export class Broadcasts {
   constructor(private readonly http: HttpClient) {}
 
+  /** POST /broadcasts — a draft unless `send: true` (optionally with `scheduledAt`). */
   create(payload: CreateBroadcastOptions): Promise<Result<BroadcastId>> {
-    return this.http.request({ method: "POST", path: "/broadcasts", body: toWire(payload) });
+    return this.http.request({
+      method: "POST",
+      path: "/broadcasts",
+      body: { ...toWire(payload), send: payload.send, scheduled_at: payload.scheduledAt },
+    });
   }
 
   get(id: string): Promise<Result<Broadcast>> {

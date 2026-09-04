@@ -1,6 +1,12 @@
 import type { Result } from "../error.js";
 import type { HttpClient } from "../http.js";
-import type { CreateTopicOptions, RemoveTopicResponse, Topic, TopicId } from "../types.js";
+import type {
+  CreateTopicOptions,
+  RemoveTopicResponse,
+  Topic,
+  TopicId,
+  UpdateTopicOptions,
+} from "../types.js";
 
 /** Subscription topics — granular unsubscribe categories for a team. */
 export class Topics {
@@ -14,6 +20,7 @@ export class Topics {
         name: payload.name,
         description: payload.description,
         default_subscription: payload.defaultSubscription,
+        visibility: payload.visibility,
       },
     });
   }
@@ -25,6 +32,14 @@ export class Topics {
   /** GET /topics — a bare `{ data }` list (topics are unpaginated). */
   list(): Promise<Result<{ data: Topic[] }>> {
     return this.http.request({ method: "GET", path: "/topics" });
+  }
+
+  update(id: string, payload: UpdateTopicOptions): Promise<Result<TopicId>> {
+    return this.http.request({
+      method: "PATCH",
+      path: `/topics/${encodeURIComponent(id)}`,
+      body: { name: payload.name, description: payload.description, visibility: payload.visibility },
+    });
   }
 
   remove(id: string): Promise<Result<RemoveTopicResponse>> {

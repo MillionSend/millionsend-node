@@ -1,8 +1,9 @@
 import { type ErrorResponse, type Result, toErrorResponse } from "./error.js";
+import type { BatchValidation } from "./types.js";
 
 const DEFAULT_BASE_URL = "http://localhost:3001";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SDK_VERSION = "0.3.0";
+const SDK_VERSION = "0.4.0";
 
 export interface MillionSendOptions {
   /**
@@ -30,12 +31,23 @@ export interface RequestOptions {
   idempotencyKey?: string;
 }
 
+export interface BatchRequestOptions extends RequestOptions {
+  /**
+   * `x-batch-validation`: `strict` (the API default) rejects the whole batch
+   * when one item is invalid; `permissive` writes the valid subset and lists
+   * the failed items in the response's `errors`.
+   */
+  batchValidation?: BatchValidation;
+}
+
 interface DoRequest {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
   query?: Record<string, string | number | undefined> | undefined;
   idempotencyKey?: string | undefined;
+  /** Extra request headers; undefined values are skipped. */
+  headers?: Record<string, string | undefined> | undefined;
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -96,13 +108,23 @@ export class HttpClient {
     this.userAgent = options.userAgent ? `${base} ${options.userAgent}` : base;
   }
 
-  async request<T>({ method, path, body, query, idempotencyKey }: DoRequest): Promise<Result<T>> {
+  async request<T>({
+    method,
+    path,
+    body,
+    query,
+    idempotencyKey,
+    headers: extraHeaders,
+  }: DoRequest): Promise<Result<T>> {
     const url = `${this.baseUrl}${path}${queryString(query)}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.#apiKey}`,
       Accept: "application/json",
       "User-Agent": this.userAgent,
     };
+    for (const [key, value] of Object.entries(extraHeaders ?? {})) {
+      if (value !== undefined) headers[key] = value;
+    }
     const init: RequestInit = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };
     if (body !== undefined && method !== "GET" && method !== "DELETE") {
       headers["Content-Type"] = "application/json";

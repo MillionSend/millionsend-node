@@ -2,14 +2,19 @@ import type { Result } from "../error.js";
 import type { HttpClient } from "../http.js";
 import { listQuery } from "../query.js";
 import type {
+  AddContactSegmentResponse,
+  BatchContactsResponse,
   Contact,
   ContactAddress,
   ContactId,
   ContactListItem,
+  ContactSegmentOptions,
   CreateContactOptions,
+  CreateContactsBatchOptions,
   List,
-  ListOptions,
+  ListContactsOptions,
   RemoveContactResponse,
+  RemoveContactSegmentResponse,
   UpdateContactOptions,
   UpdateContactTopicsOptions,
   UpdateContactTopicsResponse,
@@ -31,6 +36,8 @@ function createBody(o: CreateContactOptions) {
     last_name: o.lastName,
     unsubscribed: o.unsubscribed,
     properties: o.properties,
+    segments: o.segments,
+    topics: o.topics,
   };
 }
 
@@ -57,11 +64,54 @@ export class ContactTopics {
   }
 }
 
+/** Contact ↔ segment membership. */
+export class ContactSegments {
+  constructor(private readonly http: HttpClient) {}
+
+  private path(o: ContactSegmentOptions): string {
+    const contact = encodeURIComponent(o.email ?? o.id ?? o.contactId ?? "");
+    return `/contacts/${contact}/segments/${encodeURIComponent(o.segmentId)}`;
+  }
+
+  /** POST /contacts/:id/segments/:segmentId */
+  add(options: ContactSegmentOptions): Promise<Result<AddContactSegmentResponse>> {
+    return this.http.request({ method: "POST", path: this.path(options) });
+  }
+
+  /** DELETE /contacts/:id/segments/:segmentId */
+  remove(options: ContactSegmentOptions): Promise<Result<RemoveContactSegmentResponse>> {
+    return this.http.request({ method: "DELETE", path: this.path(options) });
+  }
+}
+
+/** Bulk contact creation (MillionSend extension; Resend imports contacts via CSV only). */
+export class ContactsBatch {
+  constructor(private readonly http: HttpClient) {}
+
+  /** POST /contacts/batch — 1–1000 contacts; `onConflict` and `batchValidation` shape the outcome. */
+  create(
+    payload: CreateContactOptions[],
+    options: CreateContactsBatchOptions = {},
+  ): Promise<Result<BatchContactsResponse>> {
+    return this.http.request({
+      method: "POST",
+      path: "/contacts/batch",
+      query: { on_conflict: options.onConflict },
+      body: payload.map(createBody),
+      headers: { "x-batch-validation": options.batchValidation },
+    });
+  }
+}
+
 export class Contacts {
   readonly topics: ContactTopics;
+  readonly segments: ContactSegments;
+  readonly batch: ContactsBatch;
 
   constructor(private readonly http: HttpClient) {
     this.topics = new ContactTopics(http);
+    this.segments = new ContactSegments(http);
+    this.batch = new ContactsBatch(http);
   }
 
   create(payload: CreateContactOptions): Promise<Result<ContactId>> {
@@ -80,7 +130,11 @@ export class Contacts {
     return this.http.request({ method: "DELETE", path: contactPath(normalize(address)) });
   }
 
-  list(options?: ListOptions): Promise<Result<List<ContactListItem>>> {
-    return this.http.request({ method: "GET", path: "/contacts", query: listQuery(options) });
+  /** GET /contacts, or GET /segments/:segmentId/contacts when `segmentId` is given. */
+  list(options?: ListContactsOptions): Promise<Result<List<ContactListItem>>> {
+    const path = options?.segmentId
+      ? `/segments/${encodeURIComponent(options.segmentId)}/contacts`
+      : "/contacts";
+    return this.http.request({ method: "GET", path, query: listQuery(options) });
   }
 }
