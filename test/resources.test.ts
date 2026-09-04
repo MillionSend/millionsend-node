@@ -208,13 +208,16 @@ describe("broadcasts", () => {
 
 describe("topics", () => {
   it("covers create/get/list/remove", async () => {
-    const { ms, calls } = makeClient();
+    const list = { object: "list", data: [{ id: "t1", name: "Product" }], has_more: false };
+    const { ms, calls } = makeClient({ body: list });
     await ms.topics.create({ name: "Product", defaultSubscription: "opt_in" });
     expect(calls[0]?.body).toEqual({ name: "Product", default_subscription: "opt_in" });
     await ms.topics.get("t1");
     expect(pathOf(calls[1])).toBe("/topics/t1");
-    await ms.topics.list();
+    const listed = await ms.topics.list();
     expect(pathOf(calls[2])).toBe("/topics");
+    expect(listed.data).toEqual(list);
+    expect(listed.data?.has_more).toBe(false);
     await ms.topics.remove("t1");
     expect(calls[3]?.method).toBe("DELETE");
   });
@@ -571,9 +574,22 @@ describe("domains", () => {
     expect(calls[1]).toMatchObject({ method: "GET", url: "https://api.test/domains/d1" });
     await ms.domains.verify("d1");
     expect(calls[2]).toMatchObject({ method: "POST", url: "https://api.test/domains/d1/verify" });
-    await ms.domains.update({ id: "d1", openTracking: true, clickTracking: true, trackingSubdomain: null });
+    await ms.domains.update({
+      id: "d1",
+      openTracking: true,
+      clickTracking: true,
+      trackingSubdomain: null,
+      tls: "enforced",
+      capabilities: { sending: "enabled" },
+    });
     expect(calls[3]).toMatchObject({ method: "PATCH", url: "https://api.test/domains/d1" });
-    expect(calls[3]?.body).toEqual({ open_tracking: true, click_tracking: true, tracking_subdomain: null });
+    expect(calls[3]?.body).toEqual({
+      open_tracking: true,
+      click_tracking: true,
+      tracking_subdomain: null,
+      tls: "enforced",
+      capabilities: { sending: "enabled" },
+    });
     await ms.domains.remove("d1");
     expect(calls[4]).toMatchObject({ method: "DELETE", url: "https://api.test/domains/d1" });
   });

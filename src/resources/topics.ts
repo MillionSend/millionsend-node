@@ -2,6 +2,7 @@ import type { Result } from "../error.js";
 import type { HttpClient } from "../http.js";
 import type {
   CreateTopicOptions,
+  List,
   RemoveTopicResponse,
   Topic,
   TopicId,
@@ -29,8 +30,8 @@ export class Topics {
     return this.http.request({ method: "GET", path: `/topics/${encodeURIComponent(id)}` });
   }
 
-  /** GET /topics — a bare `{ data }` list (topics are unpaginated). */
-  list(): Promise<Result<{ data: Topic[] }>> {
+  /** GET /topics — the list envelope with `has_more` always false (topics are unpaginated). */
+  list(): Promise<Result<List<Topic>>> {
     return this.http.request({ method: "GET", path: "/topics" });
   }
 

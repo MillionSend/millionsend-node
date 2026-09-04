@@ -161,7 +161,7 @@ await ms.contactProperties.remove(id);
 ```ts
 await ms.topics.create({ name: "Product updates", defaultSubscription: "opt_in", visibility: "public" });
 await ms.topics.get(id);
-await ms.topics.list();     // bare { data } — topics are unpaginated
+await ms.topics.list();     // { object: "list", data, has_more: false } — topics are unpaginated
 await ms.topics.update(id, { name: "Product news" });
 await ms.topics.remove(id);
 ```
