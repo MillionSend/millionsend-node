@@ -623,6 +623,7 @@ export type WebhookEvent =
   | "deliverability.paused"
   | "quota.warning"
   | "quota.reached"
+  | "quota.paused"
   | (string & {});
 
 export type WebhookStatus = "enabled" | "disabled";
