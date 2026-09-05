@@ -217,6 +217,35 @@ describe("contacts", () => {
     expect(pathOf(calls[1])).toBe("/contacts/c%2B1%40x.dev/preferences-link");
   });
 
+  it("list passes include as a comma-separated facet list", async () => {
+    const { ms, calls } = makeClient();
+    await ms.contacts.list({ limit: 100, include: ["properties", "topics"] });
+    expect(decodeURIComponent(pathOf(calls[0]))).toBe("/contacts?limit=100&include=properties,topics");
+    await ms.contacts.list({ segmentId: "s1", include: ["topics"] });
+    expect(decodeURIComponent(pathOf(calls[1]))).toBe("/segments/s1/contacts?include=topics");
+  });
+
+  it("batch.get posts ids and emails to /contacts/batch/get and returns the missing entries", async () => {
+    const { ms, calls } = makeClient({
+      body: {
+        object: "list",
+        data: [{ object: "contact", id: "c1", email: "a@x.dev" }],
+        missing: [{ index: 1, email: "b@x.dev" }],
+      },
+    });
+    const res = await ms.contacts.batch.get(["c1", { email: "b@x.dev" }], {
+      include: ["properties", "topics"],
+    });
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/contacts/batch/get" });
+    expect(calls[0]?.body).toEqual({
+      contacts: [{ id: "c1" }, { email: "b@x.dev" }],
+      include: ["properties", "topics"],
+    });
+    expect(res.data?.missing).toEqual([{ index: 1, email: "b@x.dev" }]);
+    await ms.contacts.batch.get([{ id: "c2" }]);
+    expect(calls[1]?.body).toEqual({ contacts: [{ id: "c2" }], include: undefined });
+  });
+
   it("batch.remove posts ids or emails to /contacts/batch/remove", async () => {
     const { ms, calls } = makeClient({
       body: { data: [{ object: "contact", contact: "c1", deleted: true }] },

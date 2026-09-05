@@ -4,6 +4,8 @@ import { listQuery } from "../query.js";
 import type {
   AddContactSegmentResponse,
   BatchContactsResponse,
+  BatchGetContactsOptions,
+  BatchGetContactsResponse,
   BatchRemoveContactsOptions,
   Contact,
   ContactAddress,
@@ -110,6 +112,22 @@ export class ContactsBatch {
     });
   }
 
+  /**
+   * POST /contacts/batch/get — up to 1000 contacts by id (a bare string) or
+   * `{ email }` in one request, returned in request order; entries that match
+   * no contact come back under `missing` instead of failing the call.
+   */
+  get(
+    addresses: (string | ContactAddress)[],
+    options: BatchGetContactsOptions = {},
+  ): Promise<Result<BatchGetContactsResponse>> {
+    return this.http.request({
+      method: "POST",
+      path: "/contacts/batch/get",
+      body: { contacts: addresses.map(normalize), include: options.include },
+    });
+  }
+
   /** POST /contacts/batch/remove — by `ids` or by `emails` (1–1000); lists only the rows deleted. */
   remove(options: BatchRemoveContactsOptions): Promise<Result<{ data: RemoveContactResponse[] }>> {
     return this.http.request({
@@ -160,6 +178,10 @@ export class Contacts {
     const path = options?.segmentId
       ? `/segments/${encodeURIComponent(options.segmentId)}/contacts`
       : "/contacts";
-    return this.http.request({ method: "GET", path, query: listQuery(options) });
+    return this.http.request({
+      method: "GET",
+      path,
+      query: { ...listQuery(options), include: options?.include?.join(",") },
+    });
   }
 }

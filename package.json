@@ -1,6 +1,6 @@
 {
   "name": "millionsend",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Official MillionSend SDK for Node.js — a Resend-compatible email API you can self-host.",
   "type": "module",
   "license": "MIT",

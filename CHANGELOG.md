@@ -2,6 +2,12 @@
 
 Versions follow the MillionSend API they target; the API stays wire-compatible with Resend.
 
+## 0.7.0 — 2026-09-05
+
+- `contacts.list({ include: ["properties", "topics"] })` attaches the property map and the topic subscriptions to every item (`?include=`), on the team list and on `segmentId` lists alike. Without `include` the item is unchanged.
+- `contacts.batch.get(addresses, { include })` reads up to 1000 contacts by id or email in one request via `POST /contacts/batch/get`; entries that match no contact are returned under `missing`.
+- `ContactListItem` gains optional `properties` and `topics`; `batch.get` returns `BatchGetContact` (the list item plus `object: "contact"`). Existing types are unchanged. Needs MillionSend v0.6.36 or later.
+
 ## 0.6.0 — 2026-09-04
 
 - `contacts.batch.remove(...)` posts ids or emails to `POST /contacts/batch/remove` (bulk delete).

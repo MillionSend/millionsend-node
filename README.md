@@ -131,6 +131,9 @@ await ms.contacts.update({ id, unsubscribed: true, firstName: null }); // null c
 await ms.contacts.remove({ email });
 await ms.contacts.list({ limit: 50 });
 await ms.contacts.list({ segmentId });             // GET /segments/:id/contacts
+// Bulk read (MillionSend extension): attach properties and topic subscriptions to every item,
+// so an audience reads in one request per 100 contacts instead of one per contact
+await ms.contacts.list({ limit: 100, include: ["properties", "topics"] });
 
 // Hosted preference page (MillionSend extension): the same page the unsubscribe links open.
 // The URL is a non-expiring, contact-scoped capability — show it only to the contact.
@@ -145,6 +148,12 @@ const { data } = await ms.contacts.batch.create(items, {
 data.data;   // [{ index, id, status: "created" | "updated" | "skipped" }]
 data.counts; // { created, updated, skipped, failed }
 data.errors; // permissive only
+
+// Bulk lookup (MillionSend extension): up to 1000 contacts by id or email in one request,
+// in request order; unknown entries are listed, not errors — one request against the rate limit
+const { data } = await ms.contacts.batch.get([contactId, { email }], { include: ["topics"] });
+data.data;    // [{ object: "contact", id, email, ..., topics }] — the contacts found
+data.missing; // [{ index, email }] — request entries that matched nobody
 
 // Bulk delete (MillionSend extension): up to 1000 per call, by ids or by emails
 const { data } = await ms.contacts.batch.remove({ emails }); // or { ids }

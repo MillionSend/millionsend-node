@@ -208,9 +208,27 @@ export interface UpdateContactOptions extends ContactAddress {
   properties?: Record<string, string | number | boolean | null>;
 }
 
+/** Facets a contact read can attach (MillionSend extension). */
+export type ContactInclude = "properties" | "topics";
+
 export interface ListContactsOptions extends ListOptions {
   /** List only the contacts matching this segment (GET /segments/:id/contacts). */
   segmentId?: string;
+  /** Attach `properties` and/or `topics` to every item (`?include=properties,topics`). */
+  include?: ContactInclude[];
+}
+
+export interface BatchGetContactsOptions {
+  /** Attach `properties` and/or `topics` to every contact returned. */
+  include?: ContactInclude[];
+}
+
+export interface BatchGetContactsResponse {
+  object: "list";
+  /** The contacts found, in request order. */
+  data: BatchGetContact[];
+  /** Request entries that matched no contact, by their position in the request. */
+  missing: { index: number; id?: string; email?: string }[];
 }
 
 export interface ContactId {
@@ -234,6 +252,9 @@ export interface Contact {
   properties: Record<string, ContactPropertyValue>;
 }
 
+/** One contact as `batch.get` returns it: the list item plus the facets `include` asked for. */
+export type BatchGetContact = ContactListItem & { object: "contact" };
+
 export interface ContactListItem {
   id: string;
   email: string;
@@ -241,6 +262,10 @@ export interface ContactListItem {
   last_name: string | null;
   created_at: string;
   unsubscribed: boolean;
+  /** Only with `include: ["properties"]`. */
+  properties?: Record<string, ContactPropertyValue>;
+  /** Only with `include: ["topics"]`. */
+  topics?: ContactTopic[];
 }
 
 export interface RemoveContactResponse {
