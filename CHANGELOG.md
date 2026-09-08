@@ -2,6 +2,10 @@
 
 Versions follow the MillionSend API they target; the API stays wire-compatible with Resend.
 
+## 0.8.0 — 2026-09-08
+
+- `contacts.remove(address, { erase: true })` and `contacts.batch.remove({ ids | emails, erase: true })` also scrub the address from email history, event payloads and API logs (`?erase=true` on the single delete, body `erase` on the batch) — a GDPR/LGPD erasure. Without `erase` a delete keeps the contact's emails in the send log, as before. Responses are unchanged. Needs MillionSend v0.6.54.
+
 ## 0.7.0 — 2026-09-05
 
 - `contacts.list({ include: ["properties", "topics"] })` attaches the property map and the topic subscriptions to every item (`?include=`), on the team list and on `segmentId` lists alike. Without `include` the item is unchanged.

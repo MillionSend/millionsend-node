@@ -19,6 +19,7 @@ import type {
   List,
   ListContactTopicsOptions,
   ListContactsOptions,
+  RemoveContactOptions,
   RemoveContactResponse,
   RemoveContactSegmentResponse,
   UpdateContactOptions,
@@ -128,12 +129,15 @@ export class ContactsBatch {
     });
   }
 
-  /** POST /contacts/batch/remove — by `ids` or by `emails` (1–1000); lists only the rows deleted. */
+  /**
+   * POST /contacts/batch/remove — by `ids` or by `emails` (1–1000); lists only
+   * the rows deleted. `erase` also scrubs each address from email history.
+   */
   remove(options: BatchRemoveContactsOptions): Promise<Result<{ data: RemoveContactResponse[] }>> {
     return this.http.request({
       method: "POST",
       path: "/contacts/batch/remove",
-      body: { ids: options.ids, emails: options.emails },
+      body: { ids: options.ids, emails: options.emails, erase: options.erase },
     });
   }
 }
@@ -161,8 +165,16 @@ export class Contacts {
     return this.http.request({ method: "PATCH", path: contactPath(options), body: updateBody(options) });
   }
 
-  remove(address: string | ContactAddress): Promise<Result<RemoveContactResponse>> {
-    return this.http.request({ method: "DELETE", path: contactPath(normalize(address)) });
+  /** DELETE /contacts/:id — `erase` also scrubs the address from email history (`?erase=true`). */
+  remove(
+    address: string | ContactAddress,
+    options: RemoveContactOptions = {},
+  ): Promise<Result<RemoveContactResponse>> {
+    return this.http.request({
+      method: "DELETE",
+      path: contactPath(normalize(address)),
+      query: { erase: options.erase ? "true" : undefined },
+    });
   }
 
   /** POST /contacts/:id/preferences-link — the contact's hosted preference page URL (422 when the instance cannot mint links). */

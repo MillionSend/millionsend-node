@@ -128,7 +128,9 @@ await ms.contacts.create({
 await ms.contacts.get({ email });                  // by id or email (email wins)
 await ms.contacts.get(contactId);                  // bare string works too
 await ms.contacts.update({ id, unsubscribed: true, firstName: null }); // null clears
-await ms.contacts.remove({ email });
+await ms.contacts.remove({ email });               // the contact's emails stay in the send log
+await ms.contacts.remove({ email }, { erase: true }); // ?erase=true also scrubs the address from
+                                                      // email history, events and API logs (GDPR/LGPD)
 await ms.contacts.list({ limit: 50 });
 await ms.contacts.list({ segmentId });             // GET /segments/:id/contacts
 // Bulk read (MillionSend extension): attach properties and topic subscriptions to every item,
@@ -155,8 +157,9 @@ const { data } = await ms.contacts.batch.get([contactId, { email }], { include: 
 data.data;    // [{ object: "contact", id, email, ..., topics }] — the contacts found
 data.missing; // [{ index, email }] — request entries that matched nobody
 
-// Bulk delete (MillionSend extension): up to 1000 per call, by ids or by emails
-const { data } = await ms.contacts.batch.remove({ emails }); // or { ids }
+// Bulk delete (MillionSend extension): up to 1000 per call, by ids or by emails.
+// Their emails stay in the send log; erase: true also scrubs each address from email history
+const { data } = await ms.contacts.batch.remove({ emails, erase: true }); // or { ids }
 data.data; // [{ object: "contact", contact, deleted: true }] — only the rows actually deleted
 
 // Segment membership

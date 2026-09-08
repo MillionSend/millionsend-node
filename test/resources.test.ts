@@ -163,9 +163,17 @@ describe("contacts", () => {
   it("remove and list", async () => {
     const { ms, calls } = makeClient();
     await ms.contacts.remove({ email: "c@x.dev" });
-    expect(calls[0]?.method).toBe("DELETE");
+    expect(calls[0]).toMatchObject({ method: "DELETE", url: "https://api.test/contacts/c%40x.dev" });
     await ms.contacts.list({ after: "cur" });
     expect(pathOf(calls[1])).toBe("/contacts?after=cur");
+  });
+
+  it("remove sends ?erase=true only when asked", async () => {
+    const { ms, calls } = makeClient();
+    await ms.contacts.remove("c1", { erase: true });
+    expect(calls[0]).toMatchObject({ method: "DELETE", url: "https://api.test/contacts/c1?erase=true" });
+    await ms.contacts.remove("c1", { erase: false });
+    expect(pathOf(calls[1])).toBe("/contacts/c1");
   });
 
   it("topics.update patches /contacts/:id/topics with the bare array", async () => {
@@ -256,6 +264,8 @@ describe("contacts", () => {
     expect(res.data?.data[0]).toEqual({ object: "contact", contact: "c1", deleted: true });
     await ms.contacts.batch.remove({ emails: ["a@x.dev"] });
     expect(calls[1]?.body).toEqual({ emails: ["a@x.dev"] });
+    await ms.contacts.batch.remove({ emails: ["a@x.dev"], erase: true });
+    expect(calls[2]?.body).toEqual({ emails: ["a@x.dev"], erase: true });
   });
 });
 

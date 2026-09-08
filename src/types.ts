@@ -274,9 +274,17 @@ export interface RemoveContactResponse {
   deleted: true;
 }
 
-export type BatchRemoveContactsOptions =
-  | { ids: string[]; emails?: never }
-  | { emails: string[]; ids?: never };
+export interface RemoveContactOptions {
+  /**
+   * Also scrub the address from email history, event payloads and API logs
+   * (`erase=true`, a GDPR/LGPD erasure). Without it the contact's emails stay
+   * in the send log.
+   */
+  erase?: boolean;
+}
+
+export type BatchRemoveContactsOptions = RemoveContactOptions &
+  ({ ids: string[]; emails?: never } | { emails: string[]; ids?: never });
 
 /** The contact's hosted preference page (POST /contacts/:id/preferences-link). */
 export interface ContactPreferencesLink {
