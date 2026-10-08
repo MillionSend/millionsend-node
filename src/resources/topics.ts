@@ -39,7 +39,11 @@ export class Topics {
     return this.http.request({
       method: "PATCH",
       path: `/topics/${encodeURIComponent(id)}`,
-      body: { name: payload.name, description: payload.description, visibility: payload.visibility },
+      body: {
+        name: payload.name,
+        description: payload.description,
+        visibility: payload.visibility,
+      },
     });
   }
 

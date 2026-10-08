@@ -10,7 +10,15 @@
     "type": "git",
     "url": "git+https://github.com/MillionSend/millionsend-node.git"
   },
-  "keywords": ["millionsend", "resend", "email", "ses", "sdk", "transactional", "broadcast"],
+  "keywords": [
+    "millionsend",
+    "resend",
+    "email",
+    "ses",
+    "sdk",
+    "transactional",
+    "broadcast"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -20,7 +28,12 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md", "CHANGELOG.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -28,9 +41,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "prepack": "pnpm build"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.13",
     "@types/node": "^22.20.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
