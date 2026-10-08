@@ -33,8 +33,13 @@ describe("insights", () => {
     html_size_bytes: 12345,
     computed_at: "2026-08-31T00:00:00.000Z",
     checks: [
-      { id: "list_unsubscribe", severity: "major", status: "fail", penalty: 1.25,
-        detail: { header: null, reason: "missing" } },
+      {
+        id: "list_unsubscribe",
+        severity: "major",
+        status: "fail",
+        penalty: 1.25,
+        detail: { header: null, reason: "missing" },
+      },
       { id: "plain_text_part", severity: "minor", status: "pass", penalty: 0 },
     ],
   };
@@ -131,7 +136,7 @@ describe("batch", () => {
     );
     expect(pathOf(calls[0])).toBe("/emails/batch");
     expect(Array.isArray(calls[0]?.body)).toBe(true);
-    expect((calls[0]?.body as unknown[]).length).toBe(2);
+    expect(calls[0]?.body).toHaveLength(2);
     expect(calls[0]?.headers["Idempotency-Key"]).toBe("batch-1");
     expect(res.data?.data.length).toBe(2);
   });
@@ -163,7 +168,10 @@ describe("contacts", () => {
   it("remove and list", async () => {
     const { ms, calls } = makeClient();
     await ms.contacts.remove({ email: "c@x.dev" });
-    expect(calls[0]).toMatchObject({ method: "DELETE", url: "https://api.test/contacts/c%40x.dev" });
+    expect(calls[0]).toMatchObject({
+      method: "DELETE",
+      url: "https://api.test/contacts/c%40x.dev",
+    });
     await ms.contacts.list({ after: "cur" });
     expect(pathOf(calls[1])).toBe("/contacts?after=cur");
   });
@@ -171,7 +179,10 @@ describe("contacts", () => {
   it("remove sends ?erase=true only when asked", async () => {
     const { ms, calls } = makeClient();
     await ms.contacts.remove("c1", { erase: true });
-    expect(calls[0]).toMatchObject({ method: "DELETE", url: "https://api.test/contacts/c1?erase=true" });
+    expect(calls[0]).toMatchObject({
+      method: "DELETE",
+      url: "https://api.test/contacts/c1?erase=true",
+    });
     await ms.contacts.remove("c1", { erase: false });
     expect(pathOf(calls[1])).toBe("/contacts/c1");
   });
@@ -228,7 +239,9 @@ describe("contacts", () => {
   it("list passes include as a comma-separated facet list", async () => {
     const { ms, calls } = makeClient();
     await ms.contacts.list({ limit: 100, include: ["properties", "topics"] });
-    expect(decodeURIComponent(pathOf(calls[0]))).toBe("/contacts?limit=100&include=properties,topics");
+    expect(decodeURIComponent(pathOf(calls[0]))).toBe(
+      "/contacts?limit=100&include=properties,topics",
+    );
     await ms.contacts.list({ segmentId: "s1", include: ["topics"] });
     expect(decodeURIComponent(pathOf(calls[1]))).toBe("/segments/s1/contacts?include=topics");
   });
@@ -259,7 +272,10 @@ describe("contacts", () => {
       body: { data: [{ object: "contact", contact: "c1", deleted: true }] },
     });
     const res = await ms.contacts.batch.remove({ ids: ["c1", "c2"] });
-    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/contacts/batch/remove" });
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/contacts/batch/remove",
+    });
     expect(calls[0]?.body).toEqual({ ids: ["c1", "c2"] });
     expect(res.data?.data[0]).toEqual({ object: "contact", contact: "c1", deleted: true });
     await ms.contacts.batch.remove({ emails: ["a@x.dev"] });
@@ -272,7 +288,12 @@ describe("contacts", () => {
 describe("broadcasts", () => {
   it("covers the full lifecycle", async () => {
     const { ms, calls } = makeClient();
-    await ms.broadcasts.create({ segmentId: "s1", from: "a@x.dev", subject: "News", html: "<p>hi</p>" });
+    await ms.broadcasts.create({
+      segmentId: "s1",
+      from: "a@x.dev",
+      subject: "News",
+      html: "<p>hi</p>",
+    });
     expect(pathOf(calls[0])).toBe("/broadcasts");
     expect(calls[0]?.body).toEqual({
       segment_id: "s1",
@@ -408,7 +429,10 @@ describe("emails: every field reaches the wire", () => {
   it("list, update and remove hit the right paths", async () => {
     const { ms, calls } = makeClient({ body: { object: "list", data: [], has_more: false } });
     await ms.emails.list({ limit: 10, after: "e1" });
-    expect(calls[0]).toMatchObject({ method: "GET", url: "https://api.test/emails?limit=10&after=e1" });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: "https://api.test/emails?limit=10&after=e1",
+    });
     await ms.emails.update({ id: "e1", scheduledAt: "2999-01-01T00:00:00Z" });
     expect(calls[1]).toMatchObject({ method: "PATCH", url: "https://api.test/emails/e1" });
     expect(calls[1]?.body).toEqual({ scheduled_at: "2999-01-01T00:00:00Z" });
@@ -474,7 +498,10 @@ describe("contacts: segments, topics and batch", () => {
     };
     const { ms, calls } = makeClient({ body: response });
     const res = await ms.contacts.batch.create(
-      [{ email: "a@x.dev", firstName: "A" }, { email: "nope", topics: [{ id: "t1", subscription: "opt_out" }] }],
+      [
+        { email: "a@x.dev", firstName: "A" },
+        { email: "nope", topics: [{ id: "t1", subscription: "opt_out" }] },
+      ],
       { onConflict: "upsert", batchValidation: "permissive" },
     );
     expect(calls[0]).toMatchObject({
@@ -500,7 +527,10 @@ describe("contacts: segments, topics and batch", () => {
   it("segments.add/remove address the contact by email, id or contactId", async () => {
     const { ms, calls } = makeClient({ body: { id: "c1" } });
     await ms.contacts.segments.add({ id: "c1", segmentId: "s1" });
-    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/contacts/c1/segments/s1" });
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/contacts/c1/segments/s1",
+    });
     expect(calls[0]?.body).toBeUndefined();
     await ms.contacts.segments.remove({ email: "c@x.dev", segmentId: "s1" });
     expect(calls[1]).toMatchObject({
@@ -514,7 +544,10 @@ describe("contacts: segments, topics and batch", () => {
   it("list with segmentId reads /segments/:id/contacts", async () => {
     const { ms, calls } = makeClient({ body: { object: "list", data: [], has_more: false } });
     await ms.contacts.list({ segmentId: "s1", limit: 5 });
-    expect(calls[0]).toMatchObject({ method: "GET", url: "https://api.test/segments/s1/contacts?limit=5" });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: "https://api.test/segments/s1/contacts?limit=5",
+    });
   });
 
   it("get returns the typed property objects the API sends", async () => {
@@ -577,7 +610,11 @@ describe("broadcasts: full body and null clears", () => {
 describe("topics: visibility and update", () => {
   it("create passes visibility; update patches /topics/:id", async () => {
     const { ms, calls } = makeClient();
-    await ms.topics.create({ name: "Product", defaultSubscription: "opt_in", visibility: "public" });
+    await ms.topics.create({
+      name: "Product",
+      defaultSubscription: "opt_in",
+      visibility: "public",
+    });
     expect(calls[0]?.body).toEqual({
       name: "Product",
       default_subscription: "opt_in",
@@ -624,10 +661,16 @@ describe("suppressions", () => {
   it("batch.add and batch.remove post to the batch paths", async () => {
     const { ms, calls } = makeClient({ body: { data: [] } });
     await ms.suppressions.batch.add({ emails: ["a@x.dev", "b@x.dev"], origin: "unsubscribe" });
-    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/suppressions/batch/add" });
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/suppressions/batch/add",
+    });
     expect(calls[0]?.body).toEqual({ emails: ["a@x.dev", "b@x.dev"], origin: "unsubscribe" });
     await ms.suppressions.batch.remove({ ids: ["sup1"] });
-    expect(calls[1]).toMatchObject({ method: "POST", url: "https://api.test/suppressions/batch/remove" });
+    expect(calls[1]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/suppressions/batch/remove",
+    });
     expect(calls[1]?.body).toEqual({ ids: ["sup1"] });
     await ms.suppressions.batch.remove({ emails: ["a@x.dev"] });
     expect(calls[2]?.body).toEqual({ emails: ["a@x.dev"] });
@@ -736,7 +779,11 @@ describe("webhooks", () => {
 describe("apiKeys", () => {
   it("create returns the token once; list and remove", async () => {
     const { ms, calls } = makeClient({ body: { id: "k1", token: "ms_secret" } });
-    const res = await ms.apiKeys.create({ name: "ci", permission: "sending_access", domainId: "d1" });
+    const res = await ms.apiKeys.create({
+      name: "ci",
+      permission: "sending_access",
+      domainId: "d1",
+    });
     expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/api-keys" });
     expect(calls[0]?.body).toEqual({ name: "ci", permission: "sending_access", domain_id: "d1" });
     expect(res.data?.token).toBe("ms_secret");
@@ -767,14 +814,25 @@ describe("templates", () => {
       text: "Hi",
       alias: "welcome",
     });
-    await ms.templates.update("welcome", { alias: null, subject: null, text: null, html: "<p>Yo</p>" });
+    await ms.templates.update("welcome", {
+      alias: null,
+      subject: null,
+      text: null,
+      html: "<p>Yo</p>",
+    });
     expect(calls[1]).toMatchObject({ method: "PATCH", url: "https://api.test/templates/welcome" });
     expect(calls[1]?.body).toEqual({ html: "<p>Yo</p>", subject: null, text: null, alias: null });
   });
 
   it("passes from/replyTo/variables through unchanged (the API decides)", async () => {
     const { ms, calls } = makeClient();
-    await ms.templates.create({ name: "n", html: "<p/>", from: "a@x.dev", replyTo: ["r@x.dev"], variables: [] });
+    await ms.templates.create({
+      name: "n",
+      html: "<p/>",
+      from: "a@x.dev",
+      replyTo: ["r@x.dev"],
+      variables: [],
+    });
     expect(calls[0]?.body).toEqual({
       name: "n",
       html: "<p/>",
@@ -791,9 +849,15 @@ describe("templates", () => {
     await ms.templates.get("welcome");
     expect(calls[1]).toMatchObject({ method: "GET", url: "https://api.test/templates/welcome" });
     await ms.templates.publish("tp1");
-    expect(calls[2]).toMatchObject({ method: "POST", url: "https://api.test/templates/tp1/publish" });
+    expect(calls[2]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/templates/tp1/publish",
+    });
     await ms.templates.duplicate("tp1");
-    expect(calls[3]).toMatchObject({ method: "POST", url: "https://api.test/templates/tp1/duplicate" });
+    expect(calls[3]).toMatchObject({
+      method: "POST",
+      url: "https://api.test/templates/tp1/duplicate",
+    });
     await ms.templates.remove("tp1");
     expect(calls[4]).toMatchObject({ method: "DELETE", url: "https://api.test/templates/tp1" });
   });
@@ -806,14 +870,26 @@ describe("contactProperties", () => {
     expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/contact-properties" });
     expect(calls[0]?.body).toEqual({ key: "plan", type: "string", fallback_value: "free" });
     await ms.contactProperties.list({ limit: 3 });
-    expect(calls[1]).toMatchObject({ method: "GET", url: "https://api.test/contact-properties?limit=3" });
+    expect(calls[1]).toMatchObject({
+      method: "GET",
+      url: "https://api.test/contact-properties?limit=3",
+    });
     await ms.contactProperties.get("p1");
-    expect(calls[2]).toMatchObject({ method: "GET", url: "https://api.test/contact-properties/p1" });
+    expect(calls[2]).toMatchObject({
+      method: "GET",
+      url: "https://api.test/contact-properties/p1",
+    });
     await ms.contactProperties.update({ id: "p1", fallbackValue: null });
-    expect(calls[3]).toMatchObject({ method: "PATCH", url: "https://api.test/contact-properties/p1" });
+    expect(calls[3]).toMatchObject({
+      method: "PATCH",
+      url: "https://api.test/contact-properties/p1",
+    });
     expect(calls[3]?.body).toEqual({ fallback_value: null });
     await ms.contactProperties.remove("p1");
-    expect(calls[4]).toMatchObject({ method: "DELETE", url: "https://api.test/contact-properties/p1" });
+    expect(calls[4]).toMatchObject({
+      method: "DELETE",
+      url: "https://api.test/contact-properties/p1",
+    });
   });
 });
 

@@ -17,8 +17,8 @@ import type {
   CreateContactOptions,
   CreateContactsBatchOptions,
   List,
-  ListContactTopicsOptions,
   ListContactsOptions,
+  ListContactTopicsOptions,
   RemoveContactOptions,
   RemoveContactResponse,
   RemoveContactSegmentResponse,
@@ -162,7 +162,11 @@ export class Contacts {
   }
 
   update(options: UpdateContactOptions): Promise<Result<ContactId>> {
-    return this.http.request({ method: "PATCH", path: contactPath(options), body: updateBody(options) });
+    return this.http.request({
+      method: "PATCH",
+      path: contactPath(options),
+      body: updateBody(options),
+    });
   }
 
   /** DELETE /contacts/:id — `erase` also scrubs the address from email history (`?erase=true`). */

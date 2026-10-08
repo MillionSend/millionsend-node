@@ -83,10 +83,11 @@ export class HttpClient {
 
   constructor(apiKey: string, options: MillionSendOptions = {}) {
     this.#apiKey = apiKey;
-    this.baseUrl = (options.baseUrl ?? process.env.MILLIONSEND_BASE_URL ?? DEFAULT_BASE_URL).replace(
-      /\/+$/,
-      "",
-    );
+    this.baseUrl = (
+      options.baseUrl ??
+      process.env.MILLIONSEND_BASE_URL ??
+      DEFAULT_BASE_URL
+    ).replace(/\/+$/, "");
     if (!options.allowInsecureHttp && isInsecureHttpUrl(this.baseUrl)) {
       throw new Error(
         `Refusing to send the API key over plain http to ${this.baseUrl}. Use https, or set allowInsecureHttp: true.`,

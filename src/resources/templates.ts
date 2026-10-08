@@ -41,7 +41,10 @@ export class Templates {
   }
 
   get(idOrAlias: string): Promise<Result<Template>> {
-    return this.http.request({ method: "GET", path: `/templates/${encodeURIComponent(idOrAlias)}` });
+    return this.http.request({
+      method: "GET",
+      path: `/templates/${encodeURIComponent(idOrAlias)}`,
+    });
   }
 
   /** PATCH /templates/:idOrAlias — `alias`/`subject`/`text: null` clear the field. */

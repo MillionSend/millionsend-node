@@ -67,7 +67,8 @@ describe("construction", () => {
     expect(() => new MillionSend("ms_test")).toThrow(/allowInsecureHttp/);
     delete process.env.MILLIONSEND_BASE_URL;
     expect(
-      () => new MillionSend("ms_test", { baseUrl: "http://mail.example.com", allowInsecureHttp: true }),
+      () =>
+        new MillionSend("ms_test", { baseUrl: "http://mail.example.com", allowInsecureHttp: true }),
     ).not.toThrow();
     expect(() => new MillionSend("ms_test", { baseUrl: "http://localhost:3001" })).not.toThrow();
     expect(() => new MillionSend("ms_test", { baseUrl: "http://127.0.0.1:3001" })).not.toThrow();
@@ -164,7 +165,11 @@ describe("request wiring", () => {
   it("passes the all_recipients_suppressed 422 through by name", async () => {
     const { ms } = makeClient({
       status: 422,
-      body: { statusCode: 422, name: "all_recipients_suppressed", message: "All recipients are suppressed" },
+      body: {
+        statusCode: 422,
+        name: "all_recipients_suppressed",
+        message: "All recipients are suppressed",
+      },
     });
     const res = await ms.emails.send({ from: "a@x.dev", to: "b@x.dev", subject: "s", text: "t" });
     expect(res.data).toBeNull();

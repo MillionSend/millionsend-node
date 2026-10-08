@@ -110,7 +110,10 @@ export class Batch {
   constructor(private readonly http: HttpClient) {}
 
   /** POST /emails/batch — 1–100 emails in one call; supports an Idempotency-Key and `batchValidation`. */
-  send(payload: SendEmailOptions[], options: BatchRequestOptions = {}): Promise<Result<BatchResponse>> {
+  send(
+    payload: SendEmailOptions[],
+    options: BatchRequestOptions = {},
+  ): Promise<Result<BatchResponse>> {
     return this.http.request({
       method: "POST",
       path: "/emails/batch",
@@ -121,7 +124,10 @@ export class Batch {
   }
 
   /** Alias of {@link send}, mirroring Resend. */
-  create(payload: SendEmailOptions[], options: BatchRequestOptions = {}): Promise<Result<BatchResponse>> {
+  create(
+    payload: SendEmailOptions[],
+    options: BatchRequestOptions = {},
+  ): Promise<Result<BatchResponse>> {
     return this.send(payload, options);
   }
 }

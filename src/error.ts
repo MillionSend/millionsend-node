@@ -20,7 +20,8 @@ export function toErrorResponse(body: unknown, status: number): ErrorResponse {
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
     const name = typeof b.name === "string" ? b.name : "application_error";
-    const message = typeof b.message === "string" ? b.message : `Request failed with status ${status}`;
+    const message =
+      typeof b.message === "string" ? b.message : `Request failed with status ${status}`;
     const statusCode = typeof b.statusCode === "number" ? b.statusCode : status;
     return { name, message, statusCode };
   }
