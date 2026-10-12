@@ -107,6 +107,34 @@ describe("request wiring", () => {
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
+  it("stretches the deadline past a long-poll `wait`", async () => {
+    // Answers after 100 ms unless the request is aborted first.
+    const fetchImpl = vi.fn(
+      (_url: string | URL, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve(new Response('{"object":"list","data":[],"has_more":false}')),
+            100,
+          );
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(init.signal?.reason);
+          });
+        }),
+    );
+    const ms = new MillionSend("ms_test", {
+      baseUrl: "https://api.test",
+      fetch: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 20,
+    });
+
+    const plain = await ms.emails.receiving.list();
+    expect(plain.error?.statusCode).toBeNull();
+    const polled = await ms.emails.receiving.list({ wait: 1 });
+    expect(polled.error).toBeNull();
+    expect(polled.data?.data).toEqual([]);
+  });
+
   it("maps camelCase inputs to the snake_case wire and omits undefined", async () => {
     const { ms, calls } = makeClient();
     await ms.emails.send({

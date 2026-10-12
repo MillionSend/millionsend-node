@@ -2,6 +2,14 @@
 
 Versions follow the MillionSend API they target; the API stays wire-compatible with Resend.
 
+## 0.9.0 — unreleased
+
+- `emails.receiving`: `list` (with `wait` long-polling and the `inboxId`, `to`, `from`, `since`, `subjectContains`, `unread`, `includeQuarantined` and `quarantined` filters), `get`, `reply`, `forward`, `remove`, and `attachments.list` / `attachments.get`.
+- `inboxes`: `create`, `list`, `get`, `update`, `remove`, plus `safety`, `codes.latest`, `quarantine`, `labels`, `threads` (with `threads.emails`) and `drafts` (with `send` and `reject`).
+- Replies, forwards and `drafts.send` resolve to `{ kind: "sent", email }`, or `{ kind: "draft", draft }` when the API holds the message for approval (HTTP 202).
+- A request with `wait` gets a deadline that outlasts it, so long-polls past `timeoutMs` no longer abort.
+- `WebhookEvent` names `email.received` and the 14 `inbox.*` events; webhooks take `inboxIds`; `apiKeys.create` takes `inboxId`; `domains.update` takes `receivingCatchAll`; `Domain`, `ApiKeyListItem`, `WebhookListItem` and `Usage.limits` gain `receiving_catch_all`, `inbox_id`, `inbox_ids` and `inboxes`. Existing types are otherwise unchanged. Needs a MillionSend version with inboxes; older instances answer 404 on the new paths.
+
 ## 0.8.0 — 2026-09-08
 
 - `contacts.remove(address, { erase: true })` and `contacts.batch.remove({ ids | emails, erase: true })` also scrub the address from email history, event payloads and API logs (`?erase=true` on the single delete, body `erase` on the batch) — a GDPR/LGPD erasure. Without `erase` a delete keeps the contact's emails in the send log, as before. Responses are unchanged. Needs MillionSend v0.6.54.

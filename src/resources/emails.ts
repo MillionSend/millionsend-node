@@ -15,6 +15,7 @@ import type {
   UpdateEmailOptions,
   UpdateEmailResponse,
 } from "../types.js";
+import { Receiving } from "./receiving.js";
 
 function toWire(o: SendEmailOptions) {
   return {
@@ -42,7 +43,11 @@ function toWire(o: SendEmailOptions) {
 }
 
 export class Emails {
-  constructor(private readonly http: HttpClient) {}
+  readonly receiving: Receiving;
+
+  constructor(private readonly http: HttpClient) {
+    this.receiving = new Receiving(http);
+  }
 
   /** POST /emails — supports an Idempotency-Key. */
   send(

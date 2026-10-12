@@ -40,7 +40,7 @@ export class Domains {
     return this.http.request({ method: "GET", path: `/domains/${encodeURIComponent(id)}` });
   }
 
-  /** PATCH /domains/:id — tracking settings; `trackingSubdomain: null` clears it. */
+  /** PATCH /domains/:id — tracking and catch-all settings; `trackingSubdomain: null` clears it. */
   update(payload: UpdateDomainOptions): Promise<Result<Domain>> {
     return this.http.request({
       method: "PATCH",
@@ -51,6 +51,7 @@ export class Domains {
         tracking_subdomain: payload.trackingSubdomain,
         tls: payload.tls,
         capabilities: payload.capabilities,
+        receiving_catch_all: payload.receivingCatchAll,
       },
     });
   }

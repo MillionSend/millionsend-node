@@ -65,6 +65,11 @@ No method throws for an API error — every call resolves to `{ data, error }`.
 `emails.send` and `batch.send` answer `422 all_recipients_suppressed` when every
 `to` recipient is on the suppression list or opted out of the send's `topicId`.
 
+Inboxes add `inbox_send_policy` (403, a send the inbox's rules hold), `inbox_send_cap_reached`
+(429, the inbox's daily cap), `approval_required` (403), `email_quarantined` (403),
+`email_blocked` (410, a download of an email that carries malware) and `too_many_waits`
+(429, too many concurrent long-polls).
+
 ```ts
 const { data, error } = await ms.emails.get(id);
 if (error?.name === "not_found") { /* … */ }
@@ -113,6 +118,111 @@ const { data } = await ms.batch.send([payloadA, payloadB], {
 data.data;   // [{ id }] for the accepted emails
 data.errors; // permissive only: [{ index, message }] for the rejected ones
 ```
+
+### Receiving
+
+Mail received at your domains and inboxes. Everything in a received email was
+written by its sender: show its `html` only in a sandbox, and hand an LLM the
+`extracted_text` (hidden text, quotes and the signature removed) rather than `html`.
+
+```ts
+const { data } = await ms.emails.receiving.list({
+  limit: 20,
+  inboxId,                 // only mail delivered to this inbox
+  from: "example.com",     // an address, or a domain covering its subdomains
+  to, subjectContains, since, unread,
+  wait: 30,                // long-poll: answer as soon as a match arrives, up to 50 s
+});
+data.data;  // newest first
+data.held;  // with `wait`: [{ id, inbox_id, reason, created_at }] held for screening or quarantine
+
+const { data: email } = await ms.emails.receiving.get(id, { htmlFormat: "cid" });
+email.extracted_text;        // the new part as plain text, hidden text removed (still untrusted)
+email.extracted?.code;       // a verification code, on inboxes with extract_codes
+email.screening?.sender_trust; // owner | allowlisted | known_thread | external | unauthenticated | failed
+
+await ms.emails.receiving.attachments.list(id);          // each with a signed download_url (1 hour)
+await ms.emails.receiving.attachments.get(id, attachmentId);
+await ms.emails.receiving.remove(id);                    // erase now (MillionSend extension)
+
+// Reply and forward server-side (MillionSend extension). The inbox's rules may hold the
+// message as a draft that waits for a person: the API answers 202 and `kind` is "draft".
+const { data: outcome } = await ms.emails.receiving.reply(
+  id,
+  { text: "Thanks!", replyAll: false, requiresApproval: false },
+  { idempotencyKey },
+);
+if (outcome?.kind === "draft") outcome.draft.approval_reasons; // e.g. ["send_policy"]
+else outcome?.email.id;
+await ms.emails.receiving.forward(id, { to: "ops@acme.dev", text: "FYI", mode: "attachment" });
+```
+
+Held mail never reaches an inbox-scoped key or an agent: reading it answers
+`403 email_quarantined`. A full-access team key sees it with `includeQuarantined: true`.
+
+### Inboxes
+
+An inbox is one address that receives mail, read by an agent (`kind: "agent"`,
+the default) or by people (`kind: "human"`). Threads, labels, drafts and their
+paths mirror Resend's Inboxes beta; safety rules, quarantine and codes are
+MillionSend extensions.
+
+```ts
+const { data: inbox } = await ms.inboxes.create({
+  name: "Signup bot",       // no emailAddress: a random address on the shared domain
+  expiresIn: "24h",         // `<n>h` or `<n>d`; null = never (custom domains only)
+  safety: { acceptFrom: "anyone" },
+});
+await ms.inboxes.create({ emailAddress: "support@acme.dev", name: "Support", kind: "human" });
+await ms.inboxes.list({ kind: "agent" });
+await ms.inboxes.get("support@acme.dev");                 // by id or address
+await ms.inboxes.update(inbox.id, { fromName: "Acme", expiresIn: "7d" });
+await ms.inboxes.remove(inbox.id);                        // also revokes its inbox-scoped keys
+
+// Codes and sign-in links, without parsing HTML (wait long-polls up to 50 s)
+const { data: code } = await ms.inboxes.codes.latest(inbox.id, { from: "github.com", wait: 30 });
+code.status; // "found" | "none" | "ambiguous" | "timeout"; code.code, code.url
+
+// Safety rules: who can write in, what the inbox may send
+await ms.inboxes.safety.get(inbox.id);
+await ms.inboxes.safety.update(inbox.id, { acceptFrom: "allowlist", allowlist: ["*@acme.dev"], sendCap: 50 });
+
+// Quarantine: held mail, kept until a person releases it
+await ms.inboxes.quarantine.list(inbox.id);
+await ms.inboxes.quarantine.release(inbox.id, emailId, { trustSender: true });
+
+// Threads and their messages
+await ms.inboxes.threads.list(inbox.id, { folders: ["inbox", "archive"], read: false });
+await ms.inboxes.threads.search(inbox.id, { query: "invoice", from: ["example.com"] });
+await ms.inboxes.threads.get(inbox.id, threadId);
+await ms.inboxes.threads.update(inbox.id, threadId, { read: true, folder: "archive", labelId });
+await ms.inboxes.threads.remove(inbox.id, threadId);      // to trash, purged after 30 days
+await ms.inboxes.threads.emails.list(inbox.id, threadId); // oldest first
+await ms.inboxes.threads.emails.get(inbox.id, threadId, emailId);
+await ms.inboxes.threads.emails.reply(inbox.id, threadId, emailId, { text: "Done." }, { idempotencyKey });
+await ms.inboxes.threads.emails.forward(inbox.id, threadId, emailId, { to: "ops@acme.dev" });
+
+// Labels (up to 100 per inbox)
+await ms.inboxes.labels.create(inbox.id, { name: "Billing", color: "#FF8800" });
+await ms.inboxes.labels.list(inbox.id);
+await ms.inboxes.labels.update(inbox.id, labelId, { name: "Invoices" });
+await ms.inboxes.labels.remove(inbox.id, labelId);
+
+// Drafts, and the ones that wait for approval
+await ms.inboxes.drafts.create(inbox.id, { to: "ada@example.com", subject: "Hi", text: "…" });
+await ms.inboxes.drafts.list(inbox.id);
+await ms.inboxes.drafts.get(inbox.id, draftId);
+await ms.inboxes.drafts.update(inbox.id, draftId, { cc: null });  // null clears
+await ms.inboxes.drafts.send(inbox.id, draftId, { idempotencyKey }); // { kind: "sent" | "draft" }
+await ms.inboxes.drafts.reject(inbox.id, draftId);
+await ms.inboxes.drafts.remove(inbox.id, draftId);
+```
+
+Replies, forwards and `drafts.send` resolve to `{ kind: "sent", email }` or, when
+the inbox's rules hold the message for a person (HTTP 202), `{ kind: "draft", draft }`.
+A key restricted to the inbox cannot send a draft that waits for approval
+(`403 approval_required`); a person in the dashboard or a full-access team key approves it.
+Hosted agent settings (`/inboxes/:id/agent`) are not exposed: MillionSend runs no agent of its own.
 
 ### Contacts
 
@@ -236,6 +346,7 @@ await ms.domains.list();
 await ms.domains.get(id);
 await ms.domains.verify(id);
 await ms.domains.update({ id, clickTracking: false, trackingSubdomain: null }); // null clears
+await ms.domains.update({ id, receivingCatchAll: true }); // accept mail for addresses without an inbox
 await ms.domains.remove(id);
 ```
 
@@ -259,18 +370,29 @@ const { data } = await ms.webhooks.rotate(id, { overlapHours: 24 }); // or { sig
 data.signing_secret; data.previous_secret_expires_at; // null when the old secret is dropped at once
 ```
 
-Subscribable events include `email.*`, `deliverability.*`, `quota.*`, `contact.*`
-(`created`, `updated`, `deleted`, `unsubscribed`, `resubscribed`, `topic_opt_in`,
-`topic_opt_out`) and `suppression.added` / `suppression.removed`.
+Subscribable events include `email.*` (with `email.received`), `deliverability.*`,
+`quota.*`, `contact.*` (`created`, `updated`, `deleted`, `unsubscribed`,
+`resubscribed`, `topic_opt_in`, `topic_opt_out`), `suppression.added` /
+`suppression.removed`, and the `inbox.*` events (`inbox.created`, `inbox.updated`,
+`inbox.deleted`, `inbox.expired`, `inbox.thread.created`, `inbox.thread.folder.updated`,
+`inbox.thread.labels.updated`, `inbox.email.received`, `inbox.email.sent`,
+`inbox.email.quarantined`, `inbox.draft.created`, `inbox.draft.updated`,
+`inbox.draft.sent`, `inbox.draft.deleted`). Inbox events reach only endpoints that
+list them by name. `inboxIds` limits an endpoint's inbox events and `email.received`
+to those inboxes (`null` = every inbox).
 
 ### API keys
 
 ```ts
 const { data } = await ms.apiKeys.create({ name: "ci", permission: "sending_access", domainId });
 data.token; // shown once
+await ms.apiKeys.create({ name: "signup-agent", permission: "full_access", inboxId }); // one inbox only
 await ms.apiKeys.list();
 await ms.apiKeys.remove(id);
 ```
+
+An inbox-scoped key reads only its inbox and sends only from its address; any other
+route answers `403 restricted_api_key`.
 
 ### Templates
 
@@ -340,8 +462,14 @@ match `resend`. Notes:
   answered with `422`. `templates.publish` is a no-op (every save is live).
 - **MillionSend extensions** (no Resend counterpart): `segments`,
   `deliverability`, `usage`, `emails.getInsights`, `contacts.batch`,
-  `contacts.preferencesLink`, `webhooks.rotate`, and the `origin` field on
-  suppressions.
+  `contacts.preferencesLink`, `webhooks.rotate`, the `origin` field on
+  suppressions, `emails.receiving.reply` / `remove`, and `inboxes.safety`,
+  `inboxes.codes`, `inboxes.quarantine` and `inboxes.drafts.reject`.
+- **`emails.receiving.forward(id, payload)`** forwards server-side, from your
+  inbox or domain, instead of Resend's client-side re-send of the raw message.
+- **Inboxes** follow Resend's preview shapes with ids as positional arguments
+  (`ms.inboxes.threads.emails.reply(inboxId, threadId, emailId, payload)`), and
+  return the full object on create.
 
 ## License
 

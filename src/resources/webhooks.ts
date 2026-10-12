@@ -27,6 +27,7 @@ export class Webhooks {
         endpoint: payload.endpoint,
         events: payload.events,
         signing_secret: payload.signingSecret,
+        inbox_ids: payload.inboxIds,
       },
     });
   }
@@ -43,7 +44,12 @@ export class Webhooks {
     return this.http.request({
       method: "PATCH",
       path: `/webhooks/${encodeURIComponent(id)}`,
-      body: { endpoint: payload.endpoint, events: payload.events, status: payload.status },
+      body: {
+        endpoint: payload.endpoint,
+        events: payload.events,
+        status: payload.status,
+        inbox_ids: payload.inboxIds,
+      },
     });
   }
 

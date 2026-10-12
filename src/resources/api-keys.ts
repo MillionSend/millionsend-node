@@ -22,6 +22,7 @@ export class ApiKeys {
         name: payload.name,
         permission: payload.permission,
         domain_id: payload.domainId ?? payload.domain_id,
+        inbox_id: payload.inboxId,
       },
     });
   }
