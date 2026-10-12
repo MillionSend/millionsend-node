@@ -134,7 +134,7 @@ const { data } = await ms.emails.receiving.list({
   wait: 30,                // long-poll: answer as soon as a match arrives, up to 50 s
 });
 data.data;  // newest first
-data.held;  // with `wait`: [{ id, inbox_id, reason, created_at }] held for screening or quarantine
+data.held;  // with `wait`: [{ id, inbox_id, reason, quarantine_reason, created_at }] held for screening or quarantine
 
 const { data: email } = await ms.emails.receiving.get(id, { htmlFormat: "cid" });
 email.extracted_text;        // the new part as plain text, hidden text removed (still untrusted)
@@ -197,7 +197,7 @@ await ms.inboxes.threads.search(inbox.id, { query: "invoice", from: ["example.co
 await ms.inboxes.threads.get(inbox.id, threadId);
 await ms.inboxes.threads.update(inbox.id, threadId, { read: true, folder: "archive", labelId });
 await ms.inboxes.threads.remove(inbox.id, threadId);      // to trash, purged after 30 days
-await ms.inboxes.threads.emails.list(inbox.id, threadId); // oldest first
+await ms.inboxes.threads.emails.list(inbox.id, threadId); // oldest first; includeQuarantined for owner views
 await ms.inboxes.threads.emails.get(inbox.id, threadId, emailId);
 await ms.inboxes.threads.emails.reply(inbox.id, threadId, emailId, { text: "Done." }, { idempotencyKey });
 await ms.inboxes.threads.emails.forward(inbox.id, threadId, emailId, { to: "ops@acme.dev" });

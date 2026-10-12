@@ -8,6 +8,7 @@ import type {
   Draft,
   DraftListItem,
   ForwardThreadEmailOptions,
+  GetThreadEmailOptions,
   Inbox,
   InboxListItem,
   InboxSafetyOptions,
@@ -19,6 +20,7 @@ import type {
   List,
   ListInboxesOptions,
   ListOptions,
+  ListThreadEmailsOptions,
   ListThreadsOptions,
   QuarantinedEmail,
   QuarantineRelease,
@@ -194,19 +196,28 @@ export class InboxThreadEmails {
   list(
     inboxId: string,
     threadId: string,
-    options?: ListOptions,
+    options?: ListThreadEmailsOptions,
   ): Promise<Result<List<ThreadEmail>>> {
     return this.http.request({
       method: "GET",
       path: inboxPath(inboxId, "threads", threadId, "emails"),
-      query: listQuery(options),
+      query: {
+        ...listQuery(options),
+        include_quarantined: options?.includeQuarantined ? "true" : undefined,
+      },
     });
   }
 
-  get(inboxId: string, threadId: string, emailId: string): Promise<Result<ThreadEmail>> {
+  get(
+    inboxId: string,
+    threadId: string,
+    emailId: string,
+    options: GetThreadEmailOptions = {},
+  ): Promise<Result<ThreadEmail>> {
     return this.http.request({
       method: "GET",
       path: inboxPath(inboxId, "threads", threadId, "emails", emailId),
+      query: { include_quarantined: options.includeQuarantined ? "true" : undefined },
     });
   }
 

@@ -1253,9 +1253,10 @@ export interface VerificationCode {
 
 export interface QuarantinedEmail {
   id: string;
-  thread_id: string;
+  /** Null for a catch-all copy held for a virus, which belongs to no inbox. */
+  thread_id: string | null;
   from: string;
-  subject: string;
+  subject: string | null;
   received_at: string;
   quarantine_reason: QuarantineReason;
   sender_trust: SenderTrust;
@@ -1296,10 +1297,9 @@ export interface LabelList {
   data: Label[];
 }
 
-/** Resend answers `{ object, id }`; MillionSend may add the label's fields. */
-export interface LabelAck extends Partial<Label> {
+/** What creating or updating a label answers: the whole label. */
+export interface LabelAck extends Label {
   object: "inbox_label";
-  id: string;
 }
 
 export interface CreateLabelOptions {
@@ -1358,6 +1358,13 @@ export interface ThreadSearchResult extends ThreadListItem {
   /** Only the keys that matched, each a list of fragments with `**match**` markers. */
   highlights: Partial<Record<"subject" | "from" | "to" | "cc" | "bcc" | (string & {}), string[]>>;
 }
+
+export interface GetThreadEmailOptions {
+  /** Owner views: also read a held message (full-access team keys only). */
+  includeQuarantined?: boolean;
+}
+
+export interface ListThreadEmailsOptions extends ListOptions, GetThreadEmailOptions {}
 
 export interface ListThreadsOptions extends ListOptions {
   /** Defaults to `inbox` (`inbox`, `archive`, `sent` with `labels`). */
@@ -1433,8 +1440,8 @@ export interface ThreadEmail {
 
 export interface SentEmail extends ThreadEmail {
   email_id: string;
-  thread_id: string;
-  inbox_id: string;
+  thread_id: string | null;
+  inbox_id: string | null;
 }
 
 // ---- inbox drafts --------------------------------------------------------
@@ -1515,6 +1522,6 @@ export interface RemoveDraftResponse {
 export interface SentDraft {
   object: "inbox_draft";
   id: string;
-  thread_id: string;
+  thread_id: string | null;
   email_id: string;
 }

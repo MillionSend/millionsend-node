@@ -1443,6 +1443,26 @@ describe("inboxes", () => {
     expect(res.data).toEqual({ kind: "draft", draft: DRAFT });
   });
 
+  it("thread emails list and get take includeQuarantined", async () => {
+    const base = `https://api.test/inboxes/${INBOX_ID}/threads/${THREAD_ID}/emails`;
+    const { ms, calls } = makeClient({ body: SENT_EMAIL });
+    await ms.inboxes.threads.emails.list(INBOX_ID, THREAD_ID, {
+      limit: 2,
+      includeQuarantined: true,
+    });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `${base}?limit=2&include_quarantined=true`,
+    });
+    await ms.inboxes.threads.emails.get(INBOX_ID, THREAD_ID, EMAIL_ID, {
+      includeQuarantined: true,
+    });
+    expect(calls[1]).toMatchObject({
+      method: "GET",
+      url: `${base}/${EMAIL_ID}?include_quarantined=true`,
+    });
+  });
+
   it("drafts list, create, get, update, remove and reject", async () => {
     const base = `https://api.test/inboxes/${INBOX_ID}/drafts`;
     const { ms, calls } = makeClient({ status: 201, body: DRAFT });
