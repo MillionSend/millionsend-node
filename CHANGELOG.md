@@ -8,6 +8,8 @@ Versions follow the MillionSend API they target; the API stays wire-compatible w
 - `inboxes`: `create`, `list`, `get`, `update`, `remove`, plus `safety`, `codes.latest`, `quarantine`, `labels`, `threads` (with `threads.emails`) and `drafts` (with `send` and `reject`).
 - Replies, forwards and `drafts.send` resolve to `{ kind: "sent", email }`, or `{ kind: "draft", draft }` when the API holds the message for approval (HTTP 202).
 - A request with `wait` gets a deadline that outlasts it, so long-polls past `timeoutMs` no longer abort.
+- An id that is empty, `.` or `..` resolves to `{ error: { name: "validation_error", statusCode: null } }` without a request: URL normalization would have sent it to another resource.
+- The long-poll's `held` items carry `reason` (`pending` or `quarantined`) and `quarantine_reason`.
 - `WebhookEvent` names `email.received` and the 14 `inbox.*` events; webhooks take `inboxIds`; `apiKeys.create` takes `inboxId`; `domains.update` takes `receivingCatchAll`; `Domain`, `ApiKeyListItem`, `WebhookListItem` and `Usage.limits` gain `receiving_catch_all`, `inbox_id`, `inbox_ids` and `inboxes`. Existing types are otherwise unchanged. Needs a MillionSend version with inboxes; older instances answer 404 on the new paths.
 
 ## 0.8.0 — 2026-09-08

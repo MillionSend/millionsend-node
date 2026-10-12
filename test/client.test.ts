@@ -219,6 +219,27 @@ describe("request wiring", () => {
     expect(res.error?.message).toMatch(/ECONNREFUSED/);
   });
 
+  it("never sends a path an empty, '.' or '..' id would turn into another resource's", async () => {
+    const { ms, calls } = makeClient();
+    for (const res of [
+      await ms.inboxes.labels.remove("inbox_1", ".."),
+      await ms.inboxes.threads.remove("inbox_1", "."),
+      await ms.emails.get(""),
+    ]) {
+      expect(res).toEqual({
+        data: null,
+        error: {
+          name: "validation_error",
+          message: 'An id in the request path is empty, "." or "..".',
+          statusCode: null,
+        },
+      });
+    }
+    expect(calls).toEqual([]);
+    await ms.inboxes.labels.remove("inbox_1", "...");
+    expect(calls[0]?.url).toBe("https://api.test/inboxes/inbox_1/labels/...");
+  });
+
   it("falls back to a generic error when the body is not the canonical shape", async () => {
     const { ms } = makeClient({ status: 500, body: "gateway boom" });
     const res = await ms.emails.get("e1");

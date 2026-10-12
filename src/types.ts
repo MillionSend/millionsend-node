@@ -981,11 +981,14 @@ export interface ReceivedEmailListItem {
   read?: boolean;
 }
 
-/** A membership held for screening or quarantine; the long-poll reports ids only. */
+/** A membership held for screening or quarantine; the long-poll reports ids and why only. */
 export interface HeldEmail {
   id: string;
-  inbox_id: string;
-  reason: QuarantineReason | null;
+  /** Null for a catch-all copy held for a virus. */
+  inbox_id: string | null;
+  reason: "pending" | "quarantined";
+  /** Why it was quarantined; null while it is still being screened. */
+  quarantine_reason: QuarantineReason | null;
   created_at: string;
 }
 

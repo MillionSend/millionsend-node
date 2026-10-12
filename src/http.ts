@@ -66,6 +66,18 @@ function isInsecureHttpUrl(url: string): boolean {
   return !LOOPBACK_HOSTS.has(parsed.hostname) && !parsed.hostname.startsWith("127.");
 }
 
+/**
+ * Whether a path has an empty, "." or ".." segment: URL normalization
+ * resolves those away, so an id such as ".." would send the request to
+ * another resource (DELETE /inboxes/{id}/labels/.. deletes the inbox).
+ */
+function hasDotSegment(path: string): boolean {
+  return path
+    .split("/")
+    .slice(1)
+    .some((segment) => segment === "" || segment === "." || segment === "..");
+}
+
 function queryString(query: Record<string, string | number | undefined> | undefined): string {
   if (!query) return "";
   const params = new URLSearchParams();
@@ -138,6 +150,14 @@ export class HttpClient {
     idempotencyKey,
     headers: extraHeaders,
   }: DoRequest): Promise<{ status: number | null; result: Result<T> }> {
+    if (hasDotSegment(path)) {
+      const error: ErrorResponse = {
+        name: "validation_error",
+        message: 'An id in the request path is empty, "." or "..".',
+        statusCode: null,
+      };
+      return { status: null, result: { data: null, error } };
+    }
     const url = `${this.baseUrl}${path}${queryString(query)}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.#apiKey}`,
