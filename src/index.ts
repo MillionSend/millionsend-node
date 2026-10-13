@@ -21,7 +21,7 @@ import { Webhooks } from "./resources/webhooks.js";
  * const ms = new MillionSend("ms_..."); // Cloud; self-hosted: { baseUrl: "https://mail.acme.dev" }
  * const { data, error } = await ms.emails.send({
  *   from: "Acme <onboarding@acme.dev>",
- *   to: "delivered@resend.dev",
+ *   to: "success@simulator.amazonses.com",
  *   subject: "Hello",
  *   html: "<strong>it works</strong>",
  * });
