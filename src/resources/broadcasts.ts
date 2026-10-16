@@ -31,7 +31,10 @@ function toWire(o: UpdateBroadcastOptions) {
 export class Broadcasts {
   constructor(private readonly http: HttpClient) {}
 
-  /** POST /broadcasts — a draft unless `send: true` (optionally with `scheduledAt`). */
+  /**
+   * POST /broadcasts — a draft unless `send: true` (optionally with `scheduledAt`).
+   * Sending from the shared domain answers 403 `inbox_send_policy`, here and on `send`.
+   */
   create(payload: CreateBroadcastOptions): Promise<Result<BroadcastId>> {
     return this.http.request({
       method: "POST",

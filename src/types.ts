@@ -20,11 +20,23 @@ export interface BatchError {
   message: string;
 }
 
+/** A contacts batch failure also names what strict mode would answer for the item. */
+export interface BatchContactError extends BatchError {
+  /** Absent on instances before v0.12.0. */
+  statusCode?: number;
+  /** Absent on instances before v0.12.0. */
+  name?: string;
+}
+
 // ---- shared list envelope ------------------------------------------------
 export interface ListOptions {
   limit?: number;
-  /** Keyset cursor: return items after this id. Mutually exclusive with `before`. */
+  /**
+   * Keyset cursor: the last id of a page; returns the next page (older items
+   * on the newest-first lists). Mutually exclusive with `before`.
+   */
   after?: string;
+  /** The first id of a page; returns the previous page (newer items on the newest-first lists). */
   before?: string;
 }
 
@@ -46,8 +58,11 @@ export interface Attachment {
 }
 
 export interface SendEmailOptions {
+  /** An address on a verified domain, or an inbox's exact address on the shared domain (open mode only). */
   from: string;
+  /** An address here or in cc/bcc on a domain that can never receive mail (`example.com`, `.test`, …) answers 422. */
   to: Recipients;
+  /** Up to 998 characters. */
   subject: string;
   html?: string;
   text?: string;
@@ -339,7 +354,7 @@ export interface BatchContactsResponse {
   data: BatchContactResult[];
   counts: { created: number; updated: number; skipped: number; failed: number };
   /** Present in permissive mode: the items that were not written. */
-  errors?: BatchError[];
+  errors?: BatchContactError[];
 }
 
 /** Address a contact by id, email or Resend's `contactId` (email wins). */
@@ -435,7 +450,9 @@ export interface RemoveTopicResponse {
 export interface CreateBroadcastOptions {
   name?: string;
   segmentId?: string;
+  /** Never the shared domain: sending from it answers 403 `inbox_send_policy`. */
   from: string;
+  /** Up to 998 characters. */
   subject: string;
   html?: string;
   text?: string;
@@ -598,6 +615,9 @@ export interface DomainCapabilities {
   receiving: string;
 }
 
+/** What the team's addresses on the shared domain may send: start conversations, reply in threads, or nothing. */
+export type DomainSendingMode = "open" | "reply_only" | "receive_only" | (string & {});
+
 export interface CreateDomainOptions {
   name: string;
   /** Each deployment serves one region and rejects any other; omit to use it. */
@@ -648,6 +668,15 @@ export interface DomainListItem {
   capabilities: DomainCapabilities;
   /** Whether mail to addresses without an inbox is accepted; absent on instances before inboxes. */
   receiving_catch_all?: boolean;
+  /**
+   * The team's read-only subdomain of the shared inbox domain, listed last; it
+   * sends only from its inboxes' own addresses. Absent before v0.14.0: read it as false.
+   */
+  shared?: boolean;
+  /** Shared row only. */
+  sending_mode?: DomainSendingMode;
+  /** Shared row only: what holds sending below `open`; null in open mode. */
+  sending_mode_reason?: "plan" | "instance" | (string & {}) | null;
 }
 
 export interface CreateDomainResponse extends DomainListItem {
@@ -779,7 +808,7 @@ export interface CreateApiKeyOptions {
   name: string;
   /** Defaults to full_access. */
   permission?: ApiKeyPermission;
-  /** Restrict a sending_access key to one domain. */
+  /** Restrict a sending_access key to one domain: a `shared: false` row of `domains.list`. */
   domainId?: string | null;
   /** Resend's spelling of `domainId`; either works. */
   domain_id?: string | null;
@@ -1002,13 +1031,14 @@ export interface ListReceivedEmailsOptions extends ListOptions {
   wait?: number;
   /** ISO 8601: only mail received after this instant. */
   since?: string;
+  /** An unknown inbox answers 404 `not_found` at once, even with `wait`. */
   inboxId?: string;
   /** An address the message was delivered to (`received_for`). */
   to?: string;
   /** A sender address, or a domain covering its subdomains. */
   from?: string;
   subjectContains?: string;
-  /** Needs `inboxId`. */
+  /** Needs `inboxId`, except with an inbox-scoped key, which reads its own inbox. */
   unread?: boolean;
   /** Also list held mail (full-access team keys only). */
   includeQuarantined?: boolean;
@@ -1126,7 +1156,7 @@ export interface Inbox {
   id: string;
   name: string;
   email_address: string;
-  /** For an address on the shared domain, the id of the team's shared subdomain (not listed by /domains). */
+  /** For an address on the shared domain, the id of the team's `shared: true` row of `domains.list`. */
   domain_id: string;
   receiving_address: string | null;
   from_name: string | null;
@@ -1162,7 +1192,7 @@ export interface InboxSafety {
   accept_from: "anyone" | "verified" | "allowlist" | (string & {});
   /** `local@domain` (exact) or `*@domain` (the domain and its subdomains). */
   allowlist: string[];
-  /** Owners besides the team members' login addresses. */
+  /** Owners besides the team members' login addresses; on the shared domain they are not trusted senders. */
   owner_addresses: string[];
   /** Score external and unauthenticated mail for prompt injection (agent inboxes). */
   screening: boolean;
@@ -1187,34 +1217,53 @@ export interface InboxSafetyOptions {
   ownerAddresses?: string[];
   screening?: boolean;
   extractCodes?: boolean;
+  /** On the shared domain, `allowlist` answers 422, and so does `open` unless the domain's `sending_mode` is `open`. */
   sendPolicy?: InboxSafety["send_policy"];
   requireApproval?: boolean;
   privateCodes?: boolean;
   sendCap?: number | null;
-  /** Team members' login addresses or `ownerAddresses` only. */
+  /** Team members' login addresses or `ownerAddresses` only; on the shared domain, members only. */
   forwardTo?: string[];
 }
 
 export interface CreateInboxOptions {
-  /** Omit for a random address on the instance's shared domain. */
+  /** An address on a verified domain; omit it for an address on the instance's shared domain. */
   emailAddress?: string;
+  /**
+   * Instead of `emailAddress`, the id of a `domains.list` row: the `shared: true`
+   * row works like omitting both; one of your domains needs `username`.
+   */
+  domainId?: string;
+  /**
+   * The part before the @. On the shared domain it is optional (random when
+   * omitted): 1–64 of `a-z 0-9 . _ -`, starting and ending with a letter or
+   * digit; reserved names and brand look-alikes answer 422, one in use 409.
+   * Required with the `domainId` of one of your domains.
+   */
+  username?: string;
+  /** 1–320 characters. */
   name?: string;
-  /** Display name for sending; a plain name, not `Name <email>`. */
+  /** Display name for sending; a plain name, not `Name <email>`. Reviewed on the shared domain. */
   fromName?: string;
   /** Receive at a generated `receiving_address` on the shared domain instead of the domain's MX. */
   forwarding?: boolean;
   /** Defaults to "agent". */
   kind?: "agent" | "human";
-  /** `<n>h` or `<n>d` (e.g. "24h", "7d"); null = never (custom domains only). */
+  /**
+   * `"1h"` to `"365d"`; omitted or null, the inbox never expires. A shared-domain
+   * inbox unused for 90 days is deleted either way.
+   */
   expiresIn?: string | null;
   /** Starting safety rules on top of the kind's defaults. */
   safety?: InboxSafetyOptions;
 }
 
 export interface UpdateInboxOptions {
+  /** 1–320 characters. */
   name?: string;
-  /** "" removes it. */
+  /** "" removes it. Reviewed on the shared domain. */
   fromName?: string;
+  /** A new lifetime counted from now, `"1h"` to `"365d"`; null never expires. */
   expiresIn?: string | null;
 }
 
@@ -1233,8 +1282,13 @@ export interface LatestCodeOptions {
   from?: string;
   /** Long-poll up to this many seconds (0–50) for a code to arrive. */
   wait?: number;
-  /** Oldest message to consider, in seconds (60–86400; the API defaults to 600). */
+  /** Oldest message to consider, in seconds since delivery or release (60–86400; the API defaults to 600). */
   maxAge?: number;
+  /**
+   * ISO 8601 with an offset: only mail received after this instant. Pass the
+   * previous code's `received_at` so a second sign-in waits for its own code.
+   */
+  since?: string;
 }
 
 export interface VerificationCode {
@@ -1348,6 +1402,8 @@ export interface ThreadListItem {
   has_attachment: boolean;
   has_draft: boolean;
   read: boolean;
+  /** With `includeQuarantined` in owner views: messages in quarantine, not released. */
+  quarantined?: number;
   /** Last activity; the sort key. */
   received_at: string;
   folder: ThreadFolder;
@@ -1471,7 +1527,7 @@ export interface Draft {
   created_at: string;
   updated_at: string;
   status: DraftStatus;
-  /** Why it waits for a person, e.g. `send_policy`, `ramp`, `approval_required`. */
+  /** Why it waits for a person, e.g. `send_policy`, `ramp`, `approval_required`, `reply_to_redirect`. */
   approval_reasons: string[];
   forward: boolean;
   decided_by: string | null;

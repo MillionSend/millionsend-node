@@ -22,7 +22,8 @@ run("e2e: contacts lifecycle", () => {
   const ms = apiKey ? new MillionSend(apiKey) : (null as unknown as MillionSend);
 
   it("creates, reads, updates and deletes a contact", async () => {
-    const email = `sdk-e2e-${Date.now()}@example.com`;
+    // The API refuses contacts on domains that can never receive mail, example.com included.
+    const email = `success+sdk-e2e-${Date.now()}@simulator.amazonses.com`;
     const created = await ms.contacts.create({ email, firstName: "Ada" });
     expect(created.error).toBeNull();
 

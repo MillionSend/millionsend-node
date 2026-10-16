@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ScoreBand } from "../src/index.js";
+import type { DomainSendingMode, ScoreBand } from "../src/index.js";
 import { makeClient, pathOf } from "./helper.js";
 
 describe("emails", () => {
@@ -499,7 +499,7 @@ describe("contacts: segments, topics and batch", () => {
     const response = {
       data: [{ object: "contact", index: 0, id: "c1", status: "created" }],
       counts: { created: 1, updated: 0, skipped: 0, failed: 1 },
-      errors: [{ index: 1, message: "email: invalid" }],
+      errors: [{ index: 1, statusCode: 422, name: "validation_error", message: "email: invalid" }],
     };
     const { ms, calls } = makeClient({ body: response });
     const res = await ms.contacts.batch.create(
@@ -520,6 +520,7 @@ describe("contacts: segments, topics and batch", () => {
     ]);
     expect(res.data).toEqual(response);
     expect(res.data?.counts.failed).toBe(1);
+    expect(res.data?.errors?.[0]?.name).toBe("validation_error");
   });
 
   it("batch.create without options sends no query and no header", async () => {
@@ -921,13 +922,16 @@ const INBOX_ID = "6f1c9a1e-0000-4000-8000-0000000000a1";
 const THREAD_ID = "6f1c9a1e-0000-4000-8000-0000000000b1";
 const EMAIL_ID = "6f1c9a1e-0000-4000-8000-0000000000c1";
 const DRAFT_ID = "6f1c9a1e-0000-4000-8000-0000000000d1";
+/** The team's shared subdomain, and one of its own domains. */
+const DOMAIN_ID = "6f1c9a1e-0000-4000-8000-0000000000e1";
+const OWN_DOMAIN_ID = "6f1c9a1e-0000-4000-8000-0000000000e2";
 
 const INBOX = {
   object: "inbox",
   id: INBOX_ID,
   name: "Signup bot",
   email_address: "signup-bot-7f3k@acme.agents.example.com",
-  domain_id: "6f1c9a1e-0000-4000-8000-0000000000e1",
+  domain_id: DOMAIN_ID,
   receiving_address: null,
   from_name: null,
   unread: 1,
@@ -936,7 +940,7 @@ const INBOX = {
   created_at: "2026-10-12T10:00:00.000Z",
   kind: "agent",
   shared: true,
-  expires_at: "2026-10-13T10:00:00.000Z",
+  expires_at: null,
   quarantined: 0,
   pending_approval: 0,
 };
@@ -945,7 +949,7 @@ const DRAFT = {
   object: "inbox_draft",
   id: DRAFT_ID,
   type: "reply",
-  to: ["ada@example.com"],
+  to: ["success@simulator.amazonses.com"],
   cc: [],
   bcc: [],
   subject: "Re: Confirm your email",
@@ -968,7 +972,7 @@ const SENT_EMAIL = {
   id: EMAIL_ID,
   direction: "outbound",
   from: "signup-bot-7f3k@acme.agents.example.com",
-  to: ["ada@example.com"],
+  to: ["success@simulator.amazonses.com"],
   cc: [],
   bcc: [],
   reply_to: [],
@@ -1022,6 +1026,19 @@ describe("emails.receiving", () => {
 
     await ms.emails.receiving.list();
     expect(pathOf(calls[1])).toBe("/emails/receiving");
+  });
+
+  it("unread goes out without inboxId, for an inbox-scoped key", async () => {
+    const { ms, calls } = makeClient({ body: { object: "list", has_more: false, data: [] } });
+    await ms.emails.receiving.list({ unread: false });
+    expect(pathOf(calls[0])).toBe("/emails/receiving?unread=false");
+  });
+
+  it("an unknown inboxId is a 404 not_found, even with wait", async () => {
+    const notFound = { statusCode: 404, name: "not_found", message: "Inbox not found." };
+    const { ms } = makeClient({ status: 404, body: notFound });
+    const res = await ms.emails.receiving.list({ inboxId: INBOX_ID, wait: 30 });
+    expect(res).toEqual({ data: null, error: { ...notFound, retryAfter: null } });
   });
 
   it("get passes html_format and keeps the extension fields", async () => {
@@ -1208,6 +1225,29 @@ describe("inboxes", () => {
     expect(calls[1]?.body).toEqual({});
   });
 
+  it("create sends username and domain_id only when given", async () => {
+    const { ms, calls } = makeClient({ status: 201, body: INBOX });
+    await ms.inboxes.create({ username: "ada" });
+    expect(calls[0]?.body).toEqual({ username: "ada" });
+    await ms.inboxes.create({ domainId: DOMAIN_ID });
+    expect(calls[1]?.body).toEqual({ domain_id: DOMAIN_ID });
+    await ms.inboxes.create({ domainId: OWN_DOMAIN_ID, username: "support" });
+    expect(calls[2]?.body).toEqual({ domain_id: OWN_DOMAIN_ID, username: "support" });
+  });
+
+  it("a name review that can't run is a 503 name_review_unavailable with retryAfter", async () => {
+    const unavailable = {
+      statusCode: 503,
+      name: "name_review_unavailable",
+      message: "This name couldn't be reviewed right now: try again shortly",
+    };
+    const { ms } = makeClient({ status: 503, body: unavailable, headers: { "retry-after": "60" } });
+    expect(await ms.inboxes.create({ username: "ada" })).toEqual({
+      data: null,
+      error: { ...unavailable, retryAfter: 60 },
+    });
+  });
+
   it("list, get by address, update and remove", async () => {
     const { ms, calls } = makeClient({ body: INBOX });
     await ms.inboxes.list({ limit: 2, after: INBOX_ID, kind: "agent" });
@@ -1256,7 +1296,7 @@ describe("inboxes", () => {
     expect(calls[1]?.body).toEqual({ accept_from: "verified", send_cap: 25 });
   });
 
-  it("codes.latest maps from, wait and max_age", async () => {
+  it("codes.latest maps from, wait, max_age and since", async () => {
     const found = {
       object: "verification_code",
       status: "found",
@@ -1282,6 +1322,9 @@ describe("inboxes", () => {
     expect(res.data).toEqual(found);
     await ms.inboxes.codes.latest(INBOX_ID);
     expect(pathOf(calls[1])).toBe(`/inboxes/${INBOX_ID}/codes/latest`);
+    await ms.inboxes.codes.latest(INBOX_ID, { since: "2026-10-16T12:00:00.000Z" });
+    const url = new URL(calls[2]?.url ?? "");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ since: "2026-10-16T12:00:00.000Z" });
   });
 
   it("quarantine list and release", async () => {
@@ -1382,6 +1425,30 @@ describe("inboxes", () => {
     expect(pathOf(calls[2])).toBe(`/inboxes/${INBOX_ID}/threads`);
   });
 
+  it("thread items carry quarantined only when the API sends it", async () => {
+    const item = {
+      id: THREAD_ID,
+      subject: "Confirm your email",
+      from: "Acme <hello@example.com>",
+      to: ["signup-bot-7f3k@acme.agents.example.com"],
+      cc: [],
+      bcc: [],
+      labels: [],
+      message_count: 3,
+      has_attachment: false,
+      has_draft: false,
+      read: false,
+      received_at: "2026-10-12T10:05:00.000Z",
+      folder: "inbox",
+    };
+    const list = { object: "list", has_more: false, data: [{ ...item, quarantined: 2 }, item] };
+    const { ms } = makeClient({ body: list });
+    const res = await ms.inboxes.threads.list(INBOX_ID, { includeQuarantined: true });
+    expect(res.data).toEqual(list);
+    expect(res.data?.data[0]?.quarantined).toBe(2);
+    expect(res.data?.data[1]?.quarantined).toBeUndefined();
+  });
+
   it("threads get, update and remove", async () => {
     const { ms, calls } = makeClient({ body: { object: "inbox_thread", id: THREAD_ID } });
     await ms.inboxes.threads.get(INBOX_ID, THREAD_ID);
@@ -1443,7 +1510,7 @@ describe("inboxes", () => {
 
     const { ms: held } = makeClient({ status: 202, body: DRAFT });
     const res = await held.inboxes.threads.emails.forward(INBOX_ID, THREAD_ID, EMAIL_ID, {
-      to: "stranger@example.com",
+      to: "success@simulator.amazonses.com",
     });
     expect(res.data).toEqual({ kind: "draft", draft: DRAFT });
   });
@@ -1475,14 +1542,14 @@ describe("inboxes", () => {
     expect(calls[0]).toMatchObject({ method: "GET", url: `${base}?limit=5` });
 
     const created = await ms.inboxes.drafts.create(INBOX_ID, {
-      to: "ada@example.com",
+      to: "success@simulator.amazonses.com",
       text: "Thanks, confirmed.",
       threadId: THREAD_ID,
       replyToEmailId: EMAIL_ID,
     });
     expect(calls[1]).toMatchObject({ method: "POST", url: base });
     expect(calls[1]?.body).toEqual({
-      to: "ada@example.com",
+      to: "success@simulator.amazonses.com",
       text: "Thanks, confirmed.",
       thread_id: THREAD_ID,
       reply_to_email_id: EMAIL_ID,
@@ -1568,5 +1635,96 @@ describe("inbox fields on existing resources", () => {
     const res = await ms.domains.update({ id: "d1", receivingCatchAll: false });
     expect(calls[0]?.body).toEqual({ receiving_catch_all: false });
     expect(res.data?.receiving_catch_all).toBe(false);
+  });
+});
+
+describe("domains: the shared row", () => {
+  const OWN = {
+    id: OWN_DOMAIN_ID,
+    name: "acme.dev",
+    status: "verified",
+    created_at: "2026-10-14T09:00:00.000Z",
+    region: "us-east-1",
+    open_tracking: true,
+    click_tracking: true,
+    tracking_subdomain: "links",
+    capabilities: { sending: "enabled", receiving: "enabled" },
+    receiving_catch_all: false,
+    shared: false,
+  };
+  const SHARED = {
+    id: DOMAIN_ID,
+    name: "acme.agents.example.com",
+    status: "verified",
+    created_at: "2026-10-12T10:00:00.000Z",
+    region: "us-east-1",
+    open_tracking: false,
+    click_tracking: false,
+    tracking_subdomain: null,
+    capabilities: { sending: "enabled", receiving: "enabled" },
+    receiving_catch_all: false,
+    shared: true,
+    sending_mode: "reply_only",
+    sending_mode_reason: "plan",
+  };
+
+  it("list returns own domains, then the shared row", async () => {
+    const list = { object: "list", has_more: false, data: [OWN, SHARED] };
+    const { ms } = makeClient({ body: list });
+    const res = await ms.domains.list();
+    expect(res.data).toEqual(list);
+    const [own, shared] = res.data?.data ?? [];
+    expect(own?.shared).toBe(false);
+    expect(own?.sending_mode).toBeUndefined();
+    expect(own?.sending_mode_reason).toBeUndefined();
+    expect(shared?.shared).toBe(true);
+    expect(shared?.sending_mode).toBe("reply_only");
+    expect(shared?.sending_mode_reason).toBe("plan");
+  });
+
+  it("a domain from a server before v0.14.0 has no shared key, read as false", async () => {
+    const { shared: _, ...older } = OWN;
+    const { ms } = makeClient({ body: older });
+    const res = await ms.domains.get(OWN_DOMAIN_ID);
+    expect(res.data).toEqual(older);
+    expect(res.data?.shared ?? false).toBe(false);
+  });
+
+  it("get returns the shared row with no records; open mode has a null reason", async () => {
+    const detail = {
+      object: "domain",
+      ...SHARED,
+      sending_mode: "open",
+      sending_mode_reason: null,
+      records: [],
+    };
+    const { ms, calls } = makeClient({ body: detail });
+    const res = await ms.domains.get(DOMAIN_ID);
+    expect(calls[0]).toMatchObject({ method: "GET", url: `https://api.test/domains/${DOMAIN_ID}` });
+    expect(res.data).toEqual(detail);
+    expect(res.data?.records).toEqual([]);
+    expect(res.data?.sending_mode_reason).toBeNull();
+  });
+
+  it("tolerates a sending_mode it does not know (open set)", async () => {
+    const { ms } = makeClient({ body: { ...SHARED, sending_mode: "paused_for_review" } });
+    const res = await ms.domains.get(DOMAIN_ID);
+    expect(res.data?.sending_mode).toBe("paused_for_review");
+    const future: DomainSendingMode = "paused_for_review";
+    expect(future).toBe("paused_for_review");
+  });
+
+  it("changing the shared row is a 403 forbidden", async () => {
+    const forbidden = {
+      statusCode: 403,
+      name: "forbidden",
+      message:
+        "acme.agents.example.com is your team's subdomain of the shared domain: it can't be changed or deleted",
+    };
+    const { ms } = makeClient({ status: 403, body: forbidden });
+    expect(await ms.domains.update({ id: DOMAIN_ID, clickTracking: true })).toEqual({
+      data: null,
+      error: { ...forbidden, retryAfter: null },
+    });
   });
 });

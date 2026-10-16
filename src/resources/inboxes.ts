@@ -125,7 +125,12 @@ export class InboxCodes {
     return this.http.request({
       method: "GET",
       path: inboxPath(inboxId, "codes", "latest"),
-      query: { from: options.from, wait: options.wait, max_age: options.maxAge },
+      query: {
+        from: options.from,
+        wait: options.wait,
+        max_age: options.maxAge,
+        since: options.since,
+      },
     });
   }
 }
@@ -389,13 +394,21 @@ export class Inboxes {
     this.drafts = new InboxDrafts(http);
   }
 
-  /** POST /inboxes — without `emailAddress`, a random address on the instance's shared domain. */
+  /**
+   * POST /inboxes — without `emailAddress` or `domainId`, an address on the
+   * instance's shared domain: `username`, or random. Shared and forwarding
+   * creates answer 503 `name_review_unavailable` (see `retryAfter`) while the
+   * team's subdomain awaits its name review, and so does a chosen `username` or
+   * `fromName` there while the review is down; a spent review budget answers 429.
+   */
   create(payload: CreateInboxOptions = {}): Promise<Result<Inbox>> {
     return this.http.request({
       method: "POST",
       path: "/inboxes",
       body: {
         email_address: payload.emailAddress,
+        domain_id: payload.domainId,
+        username: payload.username,
         name: payload.name,
         from_name: payload.fromName,
         forwarding: payload.forwarding,
@@ -420,6 +433,7 @@ export class Inboxes {
     return this.http.request({ method: "GET", path: inboxPath(idOrEmail) });
   }
 
+  /** PATCH /inboxes/:id — a new `fromName` on the shared domain is reviewed like on `create` (503, 429). */
   update(id: string, payload: UpdateInboxOptions): Promise<Result<Inbox>> {
     return this.http.request({
       method: "PATCH",
