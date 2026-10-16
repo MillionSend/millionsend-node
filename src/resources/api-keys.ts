@@ -14,6 +14,7 @@ import type {
 export class ApiKeys {
   constructor(private readonly http: HttpClient) {}
 
+  /** POST /api-keys — a `domainId` must be one of your own domains, not the `shared: true` row. */
   create(payload: CreateApiKeyOptions): Promise<Result<CreateApiKeyResponse>> {
     return this.http.request({
       method: "POST",
@@ -22,6 +23,7 @@ export class ApiKeys {
         name: payload.name,
         permission: payload.permission,
         domain_id: payload.domainId ?? payload.domain_id,
+        inbox_id: payload.inboxId,
       },
     });
   }

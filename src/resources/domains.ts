@@ -12,7 +12,10 @@ import type {
   UpdateDomainOptions,
 } from "../types.js";
 
-/** Sending domains and their DNS records. */
+/**
+ * Sending domains and their DNS records. The team's subdomain of the shared
+ * inbox domain is listed too, read-only, as the last row (`shared: true`).
+ */
 export class Domains {
   constructor(private readonly http: HttpClient) {}
 
@@ -32,6 +35,7 @@ export class Domains {
     });
   }
 
+  /** GET /domains — own domains newest first, then the shared row. */
   list(options?: ListOptions): Promise<Result<List<DomainListItem>>> {
     return this.http.request({ method: "GET", path: "/domains", query: listQuery(options) });
   }
@@ -40,7 +44,10 @@ export class Domains {
     return this.http.request({ method: "GET", path: `/domains/${encodeURIComponent(id)}` });
   }
 
-  /** PATCH /domains/:id — tracking settings; `trackingSubdomain: null` clears it. */
+  /**
+   * PATCH /domains/:id — tracking and catch-all settings; `trackingSubdomain: null` clears it.
+   * The shared row answers 403 `forbidden` here, on `verify` and on `remove`.
+   */
   update(payload: UpdateDomainOptions): Promise<Result<Domain>> {
     return this.http.request({
       method: "PATCH",
@@ -51,6 +58,7 @@ export class Domains {
         tracking_subdomain: payload.trackingSubdomain,
         tls: payload.tls,
         capabilities: payload.capabilities,
+        receiving_catch_all: payload.receivingCatchAll,
       },
     });
   }

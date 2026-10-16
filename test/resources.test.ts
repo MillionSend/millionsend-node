@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ScoreBand } from "../src/index.js";
+import type { DomainSendingMode, ScoreBand } from "../src/index.js";
 import { makeClient, pathOf } from "./helper.js";
 
 describe("emails", () => {
@@ -61,7 +61,12 @@ describe("insights", () => {
     });
     const res = await ms.emails.getInsights("missing");
     expect(res.data).toBeNull();
-    expect(res.error).toEqual({ statusCode: 404, name: "not_found", message: "Email not found" });
+    expect(res.error).toEqual({
+      statusCode: 404,
+      name: "not_found",
+      message: "Email not found",
+      retryAfter: null,
+    });
   });
 
   it("tolerates unknown future band/severity/status values (open sets)", async () => {
@@ -494,7 +499,7 @@ describe("contacts: segments, topics and batch", () => {
     const response = {
       data: [{ object: "contact", index: 0, id: "c1", status: "created" }],
       counts: { created: 1, updated: 0, skipped: 0, failed: 1 },
-      errors: [{ index: 1, message: "email: invalid" }],
+      errors: [{ index: 1, statusCode: 422, name: "validation_error", message: "email: invalid" }],
     };
     const { ms, calls } = makeClient({ body: response });
     const res = await ms.contacts.batch.create(
@@ -515,6 +520,7 @@ describe("contacts: segments, topics and batch", () => {
     ]);
     expect(res.data).toEqual(response);
     expect(res.data?.counts.failed).toBe(1);
+    expect(res.data?.errors?.[0]?.name).toBe("validation_error");
   });
 
   it("batch.create without options sends no query and no header", async () => {
@@ -908,5 +914,817 @@ describe("usage", () => {
     const res = await ms.usage.get();
     expect(calls[0]).toMatchObject({ method: "GET", url: "https://api.test/usage" });
     expect(res.data).toEqual(fixture);
+  });
+});
+
+// ---- receiving and inboxes ------------------------------------------------
+const INBOX_ID = "6f1c9a1e-0000-4000-8000-0000000000a1";
+const THREAD_ID = "6f1c9a1e-0000-4000-8000-0000000000b1";
+const EMAIL_ID = "6f1c9a1e-0000-4000-8000-0000000000c1";
+const DRAFT_ID = "6f1c9a1e-0000-4000-8000-0000000000d1";
+/** The team's shared subdomain, and one of its own domains. */
+const DOMAIN_ID = "6f1c9a1e-0000-4000-8000-0000000000e1";
+const OWN_DOMAIN_ID = "6f1c9a1e-0000-4000-8000-0000000000e2";
+
+const INBOX = {
+  object: "inbox",
+  id: INBOX_ID,
+  name: "Signup bot",
+  email_address: "signup-bot-7f3k@acme.agents.example.com",
+  domain_id: DOMAIN_ID,
+  receiving_address: null,
+  from_name: null,
+  unread: 1,
+  drafts: 0,
+  last_received: "2026-10-12T10:05:00.000Z",
+  created_at: "2026-10-12T10:00:00.000Z",
+  kind: "agent",
+  shared: true,
+  expires_at: null,
+  quarantined: 0,
+  pending_approval: 0,
+};
+
+const DRAFT = {
+  object: "inbox_draft",
+  id: DRAFT_ID,
+  type: "reply",
+  to: ["success@simulator.amazonses.com"],
+  cc: [],
+  bcc: [],
+  subject: "Re: Confirm your email",
+  html: null,
+  text: "Thanks, confirmed.",
+  thread_id: THREAD_ID,
+  reply_to_email_id: EMAIL_ID,
+  email_id: null,
+  created_at: "2026-10-12T10:06:00.000Z",
+  updated_at: "2026-10-12T10:06:00.000Z",
+  status: "pending_approval",
+  approval_reasons: ["send_policy"],
+  forward: false,
+  decided_by: null,
+  decided_at: null,
+  expires_at: "2026-10-19T10:06:00.000Z",
+};
+
+const SENT_EMAIL = {
+  id: EMAIL_ID,
+  direction: "outbound",
+  from: "signup-bot-7f3k@acme.agents.example.com",
+  to: ["success@simulator.amazonses.com"],
+  cc: [],
+  bcc: [],
+  reply_to: [],
+  subject: "Re: Confirm your email",
+  message_id: null,
+  html: null,
+  text: "Thanks, confirmed.",
+  attachments: [],
+  read: true,
+  received_at: "2026-10-12T10:06:00.000Z",
+  email_id: EMAIL_ID,
+  thread_id: THREAD_ID,
+  inbox_id: INBOX_ID,
+  status: "queued",
+};
+
+describe("emails.receiving", () => {
+  it("list maps every filter to the wire; flags read as true/false", async () => {
+    const { ms, calls } = makeClient({
+      body: { object: "list", has_more: false, data: [], held: [] },
+    });
+    const res = await ms.emails.receiving.list({
+      limit: 10,
+      before: EMAIL_ID,
+      wait: 30,
+      since: "2026-10-12T10:00:00Z",
+      inboxId: INBOX_ID,
+      to: "bot@acme.dev",
+      from: "example.com",
+      subjectContains: "code",
+      unread: false,
+      includeQuarantined: true,
+      quarantined: false,
+    });
+    const url = new URL(calls[0]?.url ?? "");
+    expect(calls[0]?.method).toBe("GET");
+    expect(url.pathname).toBe("/emails/receiving");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      limit: "10",
+      before: EMAIL_ID,
+      wait: "30",
+      since: "2026-10-12T10:00:00Z",
+      inbox_id: INBOX_ID,
+      to: "bot@acme.dev",
+      from: "example.com",
+      subject_contains: "code",
+      unread: "false",
+      include_quarantined: "true",
+    });
+    expect(res.data?.held).toEqual([]);
+
+    await ms.emails.receiving.list();
+    expect(pathOf(calls[1])).toBe("/emails/receiving");
+  });
+
+  it("unread goes out without inboxId, for an inbox-scoped key", async () => {
+    const { ms, calls } = makeClient({ body: { object: "list", has_more: false, data: [] } });
+    await ms.emails.receiving.list({ unread: false });
+    expect(pathOf(calls[0])).toBe("/emails/receiving?unread=false");
+  });
+
+  it("an unknown inboxId is a 404 not_found, even with wait", async () => {
+    const notFound = { statusCode: 404, name: "not_found", message: "Inbox not found." };
+    const { ms } = makeClient({ status: 404, body: notFound });
+    const res = await ms.emails.receiving.list({ inboxId: INBOX_ID, wait: 30 });
+    expect(res).toEqual({ data: null, error: { ...notFound, retryAfter: null } });
+  });
+
+  it("get passes html_format and keeps the extension fields", async () => {
+    const detail = {
+      object: "email",
+      id: EMAIL_ID,
+      extracted_text: "Your verification code is 482913",
+      extracted: {
+        kinds: ["code"],
+        code: "482913",
+        link: null,
+        link_domain_matches_sender: null,
+        ambiguous: false,
+      },
+      screening: {
+        verdict: "clean",
+        sender_trust: "external",
+        quarantine_reason: null,
+        reasons: [],
+        injection_score: 2,
+        phishing_score: null,
+        hidden_text_removed: false,
+      },
+      future_field: { nested: true },
+    };
+    const { ms, calls } = makeClient({ body: detail });
+    const res = await ms.emails.receiving.get(EMAIL_ID, { htmlFormat: "cid" });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/emails/receiving/${EMAIL_ID}?html_format=cid`,
+    });
+    expect(res.data).toEqual(detail);
+    expect(res.data?.extracted?.code).toBe("482913");
+
+    await ms.emails.receiving.get(EMAIL_ID);
+    expect(pathOf(calls[1])).toBe(`/emails/receiving/${EMAIL_ID}`);
+  });
+
+  it("reply sends the snake_case body with an Idempotency-Key and reads 200 as sent", async () => {
+    const sent = { object: "email", id: EMAIL_ID, thread_id: THREAD_ID, inbox_id: INBOX_ID };
+    const { ms, calls } = makeClient({ body: sent });
+    const res = await ms.emails.receiving.reply(
+      EMAIL_ID,
+      {
+        text: "Thanks, confirmed.",
+        html: "<p>Thanks</p>",
+        subject: "Re: hi",
+        cc: "ops@acme.dev",
+        bcc: ["audit@acme.dev"],
+        replyAll: true,
+        requiresApproval: false,
+        from: "bot@acme.dev",
+        inboxId: INBOX_ID,
+      },
+      { idempotencyKey: "reply-1" },
+    );
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: `https://api.test/emails/receiving/${EMAIL_ID}/reply`,
+    });
+    expect(calls[0]?.body).toEqual({
+      text: "Thanks, confirmed.",
+      html: "<p>Thanks</p>",
+      subject: "Re: hi",
+      cc: "ops@acme.dev",
+      bcc: ["audit@acme.dev"],
+      reply_all: true,
+      requires_approval: false,
+      from: "bot@acme.dev",
+      inbox_id: INBOX_ID,
+    });
+    expect(calls[0]?.headers["Idempotency-Key"]).toBe("reply-1");
+    expect(res).toEqual({ data: { kind: "sent", email: sent }, error: null });
+  });
+
+  it("a 202 answer is the draft held for approval", async () => {
+    const { ms } = makeClient({ status: 202, body: DRAFT });
+    const res = await ms.emails.receiving.reply(EMAIL_ID, { text: "hi" });
+    expect(res.error).toBeNull();
+    if (res.data?.kind !== "draft") throw new Error("expected a draft");
+    expect(res.data.draft).toEqual(DRAFT);
+    expect(res.data.draft.approval_reasons).toEqual(["send_policy"]);
+  });
+
+  it("forward sends to, mode and the note; errors pass through", async () => {
+    const { ms, calls } = makeClient({
+      body: { object: "email", id: EMAIL_ID, thread_id: null, inbox_id: null },
+    });
+    const res = await ms.emails.receiving.forward(
+      EMAIL_ID,
+      { to: ["ops@acme.dev"], text: "FYI", mode: "attachment", requiresApproval: true },
+      { idempotencyKey: "fwd-1" },
+    );
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: `https://api.test/emails/receiving/${EMAIL_ID}/forward`,
+    });
+    expect(calls[0]?.body).toEqual({
+      to: ["ops@acme.dev"],
+      text: "FYI",
+      mode: "attachment",
+      requires_approval: true,
+    });
+    expect(calls[0]?.headers["Idempotency-Key"]).toBe("fwd-1");
+    expect(res.data?.kind).toBe("sent");
+
+    const quarantined = {
+      statusCode: 403,
+      name: "email_quarantined",
+      message: "This email is quarantined; a person can release it in the dashboard",
+    };
+    const { ms: refused } = makeClient({ status: 403, body: quarantined });
+    const err = await refused.emails.receiving.forward(EMAIL_ID, { to: "ops@acme.dev" });
+    expect(err).toEqual({ data: null, error: { ...quarantined, retryAfter: null } });
+  });
+
+  it("remove erases; attachments list and get", async () => {
+    const { ms, calls } = makeClient();
+    await ms.emails.receiving.remove(EMAIL_ID);
+    expect(calls[0]).toMatchObject({
+      method: "DELETE",
+      url: `https://api.test/emails/receiving/${EMAIL_ID}`,
+    });
+    await ms.emails.receiving.attachments.list(EMAIL_ID, { limit: 5 });
+    expect(calls[1]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/emails/receiving/${EMAIL_ID}/attachments?limit=5`,
+    });
+    await ms.emails.receiving.attachments.get(EMAIL_ID, "att-1");
+    expect(calls[2]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/emails/receiving/${EMAIL_ID}/attachments/att-1`,
+    });
+  });
+});
+
+describe("inboxes", () => {
+  it("create maps every field, safety included; no argument sends {}", async () => {
+    const { ms, calls } = makeClient({ status: 201, body: INBOX });
+    const res = await ms.inboxes.create({
+      emailAddress: "support@acme.dev",
+      name: "Support",
+      fromName: "Acme Support",
+      forwarding: false,
+      kind: "human",
+      expiresIn: null,
+      safety: {
+        acceptFrom: "allowlist",
+        allowlist: ["*@acme.dev"],
+        ownerAddresses: ["ops@acme.dev"],
+        screening: false,
+        extractCodes: true,
+        sendPolicy: "allowlist",
+        requireApproval: true,
+        privateCodes: false,
+        sendCap: null,
+        forwardTo: ["ops@acme.dev"],
+      },
+    });
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.test/inboxes" });
+    expect(calls[0]?.body).toEqual({
+      email_address: "support@acme.dev",
+      name: "Support",
+      from_name: "Acme Support",
+      forwarding: false,
+      kind: "human",
+      expires_in: null,
+      safety: {
+        accept_from: "allowlist",
+        allowlist: ["*@acme.dev"],
+        owner_addresses: ["ops@acme.dev"],
+        screening: false,
+        extract_codes: true,
+        send_policy: "allowlist",
+        require_approval: true,
+        private_codes: false,
+        send_cap: null,
+        forward_to: ["ops@acme.dev"],
+      },
+    });
+    expect(res.data).toEqual(INBOX);
+
+    await ms.inboxes.create();
+    expect(calls[1]?.body).toEqual({});
+  });
+
+  it("create sends username and domain_id only when given", async () => {
+    const { ms, calls } = makeClient({ status: 201, body: INBOX });
+    await ms.inboxes.create({ username: "ada" });
+    expect(calls[0]?.body).toEqual({ username: "ada" });
+    await ms.inboxes.create({ domainId: DOMAIN_ID });
+    expect(calls[1]?.body).toEqual({ domain_id: DOMAIN_ID });
+    await ms.inboxes.create({ domainId: OWN_DOMAIN_ID, username: "support" });
+    expect(calls[2]?.body).toEqual({ domain_id: OWN_DOMAIN_ID, username: "support" });
+  });
+
+  it("a name review that can't run is a 503 name_review_unavailable with retryAfter", async () => {
+    const unavailable = {
+      statusCode: 503,
+      name: "name_review_unavailable",
+      message: "This name couldn't be reviewed right now: try again shortly",
+    };
+    const { ms } = makeClient({ status: 503, body: unavailable, headers: { "retry-after": "60" } });
+    expect(await ms.inboxes.create({ username: "ada" })).toEqual({
+      data: null,
+      error: { ...unavailable, retryAfter: 60 },
+    });
+  });
+
+  it("list, get by address, update and remove", async () => {
+    const { ms, calls } = makeClient({ body: INBOX });
+    await ms.inboxes.list({ limit: 2, after: INBOX_ID, kind: "agent" });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/inboxes?limit=2&after=${INBOX_ID}&kind=agent`,
+    });
+    await ms.inboxes.get("Support@acme.dev");
+    expect(calls[1]).toMatchObject({
+      method: "GET",
+      url: "https://api.test/inboxes/Support%40acme.dev",
+    });
+    await ms.inboxes.update(INBOX_ID, { name: "Bot", fromName: "", expiresIn: "7d" });
+    expect(calls[2]).toMatchObject({
+      method: "PATCH",
+      url: `https://api.test/inboxes/${INBOX_ID}`,
+    });
+    expect(calls[2]?.body).toEqual({ name: "Bot", from_name: "", expires_in: "7d" });
+    await ms.inboxes.remove(INBOX_ID);
+    expect(calls[3]).toMatchObject({
+      method: "DELETE",
+      url: `https://api.test/inboxes/${INBOX_ID}`,
+    });
+  });
+
+  it("tolerates unknown keys and enum values", async () => {
+    const future = { ...INBOX, kind: "team", brand_new: [1, 2] };
+    const { ms } = makeClient({ body: future });
+    const res = await ms.inboxes.get(INBOX_ID);
+    expect(res.data).toEqual(future);
+    expect(res.data?.kind).toBe("team");
+  });
+
+  it("safety get and partial update", async () => {
+    const { ms, calls } = makeClient({ body: { object: "inbox_safety", inbox_id: INBOX_ID } });
+    await ms.inboxes.safety.get(INBOX_ID);
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/inboxes/${INBOX_ID}/safety`,
+    });
+    await ms.inboxes.safety.update(INBOX_ID, { sendCap: 25, acceptFrom: "verified" });
+    expect(calls[1]).toMatchObject({
+      method: "PATCH",
+      url: `https://api.test/inboxes/${INBOX_ID}/safety`,
+    });
+    expect(calls[1]?.body).toEqual({ accept_from: "verified", send_cap: 25 });
+  });
+
+  it("codes.latest maps from, wait, max_age and since", async () => {
+    const found = {
+      object: "verification_code",
+      status: "found",
+      kind: "otp",
+      code: "482913",
+      url: null,
+      link_domain_matches_sender: null,
+      email_id: EMAIL_ID,
+      from: "hello@example.com",
+      received_at: "2026-10-12T10:05:00.000Z",
+      sender_trust: "external",
+    };
+    const { ms, calls } = makeClient({ body: found });
+    const res = await ms.inboxes.codes.latest(INBOX_ID, {
+      from: "example.com",
+      wait: 20,
+      maxAge: 600,
+    });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/inboxes/${INBOX_ID}/codes/latest?from=example.com&wait=20&max_age=600`,
+    });
+    expect(res.data).toEqual(found);
+    await ms.inboxes.codes.latest(INBOX_ID);
+    expect(pathOf(calls[1])).toBe(`/inboxes/${INBOX_ID}/codes/latest`);
+    await ms.inboxes.codes.latest(INBOX_ID, { since: "2026-10-16T12:00:00.000Z" });
+    const url = new URL(calls[2]?.url ?? "");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ since: "2026-10-16T12:00:00.000Z" });
+  });
+
+  it("quarantine list and release", async () => {
+    const release = {
+      object: "inbox_release",
+      inbox_id: INBOX_ID,
+      email_id: EMAIL_ID,
+      released_at: "2026-10-12T10:07:00.000Z",
+      trusted_sender: "hello@example.com",
+    };
+    const { ms, calls } = makeClient({ body: release });
+    await ms.inboxes.quarantine.list(INBOX_ID, { limit: 3 });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/inboxes/${INBOX_ID}/quarantine?limit=3`,
+    });
+    const res = await ms.inboxes.quarantine.release(INBOX_ID, EMAIL_ID, { trustSender: true });
+    expect(calls[1]).toMatchObject({
+      method: "POST",
+      url: `https://api.test/inboxes/${INBOX_ID}/quarantine/${EMAIL_ID}/release`,
+    });
+    expect(calls[1]?.body).toEqual({ trust_sender: true });
+    expect(res.data).toEqual(release);
+    await ms.inboxes.quarantine.release(INBOX_ID, EMAIL_ID);
+    expect(calls[2]?.body).toEqual({});
+  });
+
+  it("labels list, create, update and remove", async () => {
+    const { ms, calls } = makeClient({ body: { object: "inbox_label", id: "l1" } });
+    await ms.inboxes.labels.list(INBOX_ID);
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/inboxes/${INBOX_ID}/labels`,
+    });
+    await ms.inboxes.labels.create(INBOX_ID, { name: "Billing", color: "#FF8800" });
+    expect(calls[1]).toMatchObject({
+      method: "POST",
+      url: `https://api.test/inboxes/${INBOX_ID}/labels`,
+    });
+    expect(calls[1]?.body).toEqual({ name: "Billing", color: "#FF8800" });
+    await ms.inboxes.labels.update(INBOX_ID, "l1", { name: "Invoices" });
+    expect(calls[2]).toMatchObject({
+      method: "PATCH",
+      url: `https://api.test/inboxes/${INBOX_ID}/labels/l1`,
+    });
+    expect(calls[2]?.body).toEqual({ name: "Invoices" });
+    await ms.inboxes.labels.remove(INBOX_ID, "l1");
+    expect(calls[3]).toMatchObject({
+      method: "DELETE",
+      url: `https://api.test/inboxes/${INBOX_ID}/labels/l1`,
+    });
+  });
+
+  it("threads list and search send lists as CSV and drop empty ones", async () => {
+    const { ms, calls } = makeClient({ body: { object: "list", has_more: false, data: [] } });
+    await ms.inboxes.threads.list(INBOX_ID, {
+      folders: ["inbox", "archive"],
+      labels: [],
+      read: false,
+      includeQuarantined: true,
+      limit: 20,
+    });
+    const listed = new URL(calls[0]?.url ?? "");
+    expect(listed.pathname).toBe(`/inboxes/${INBOX_ID}/threads`);
+    expect(Object.fromEntries(listed.searchParams)).toEqual({
+      limit: "20",
+      folders: "inbox,archive",
+      read: "false",
+      include_quarantined: "true",
+    });
+
+    await ms.inboxes.threads.search(INBOX_ID, {
+      query: '"invoice 42" -spam',
+      from: ["ada", "example.com"],
+      to: ["bot@acme.dev"],
+      cc: ["ops"],
+      bcc: ["audit"],
+      hasAttachment: true,
+      startDate: "2026-10-01",
+      endDate: "2026-10-12",
+      labels: ["l1", "l2"],
+    });
+    const searched = new URL(calls[1]?.url ?? "");
+    expect(searched.pathname).toBe(`/inboxes/${INBOX_ID}/threads/search`);
+    expect(Object.fromEntries(searched.searchParams)).toEqual({
+      labels: "l1,l2",
+      query: '"invoice 42" -spam',
+      from: "ada,example.com",
+      to: "bot@acme.dev",
+      cc: "ops",
+      bcc: "audit",
+      has_attachment: "true",
+      start_date: "2026-10-01",
+      end_date: "2026-10-12",
+    });
+
+    await ms.inboxes.threads.list(INBOX_ID);
+    expect(pathOf(calls[2])).toBe(`/inboxes/${INBOX_ID}/threads`);
+  });
+
+  it("thread items carry quarantined only when the API sends it", async () => {
+    const item = {
+      id: THREAD_ID,
+      subject: "Confirm your email",
+      from: "Acme <hello@example.com>",
+      to: ["signup-bot-7f3k@acme.agents.example.com"],
+      cc: [],
+      bcc: [],
+      labels: [],
+      message_count: 3,
+      has_attachment: false,
+      has_draft: false,
+      read: false,
+      received_at: "2026-10-12T10:05:00.000Z",
+      folder: "inbox",
+    };
+    const list = { object: "list", has_more: false, data: [{ ...item, quarantined: 2 }, item] };
+    const { ms } = makeClient({ body: list });
+    const res = await ms.inboxes.threads.list(INBOX_ID, { includeQuarantined: true });
+    expect(res.data).toEqual(list);
+    expect(res.data?.data[0]?.quarantined).toBe(2);
+    expect(res.data?.data[1]?.quarantined).toBeUndefined();
+  });
+
+  it("threads get, update and remove", async () => {
+    const { ms, calls } = makeClient({ body: { object: "inbox_thread", id: THREAD_ID } });
+    await ms.inboxes.threads.get(INBOX_ID, THREAD_ID);
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `https://api.test/inboxes/${INBOX_ID}/threads/${THREAD_ID}`,
+    });
+    await ms.inboxes.threads.update(INBOX_ID, THREAD_ID, {
+      read: true,
+      folder: "archive",
+      labelId: "l1",
+    });
+    expect(calls[1]).toMatchObject({
+      method: "PATCH",
+      url: `https://api.test/inboxes/${INBOX_ID}/threads/${THREAD_ID}`,
+    });
+    expect(calls[1]?.body).toEqual({ read: true, folder: "archive", label_id: "l1" });
+    await ms.inboxes.threads.remove(INBOX_ID, THREAD_ID);
+    expect(calls[2]).toMatchObject({
+      method: "DELETE",
+      url: `https://api.test/inboxes/${INBOX_ID}/threads/${THREAD_ID}`,
+    });
+  });
+
+  it("thread emails list, get, reply and forward", async () => {
+    const base = `https://api.test/inboxes/${INBOX_ID}/threads/${THREAD_ID}/emails`;
+    const { ms, calls } = makeClient({ body: SENT_EMAIL });
+    await ms.inboxes.threads.emails.list(INBOX_ID, THREAD_ID, { after: EMAIL_ID });
+    expect(calls[0]).toMatchObject({ method: "GET", url: `${base}?after=${EMAIL_ID}` });
+    await ms.inboxes.threads.emails.get(INBOX_ID, THREAD_ID, EMAIL_ID);
+    expect(calls[1]).toMatchObject({ method: "GET", url: `${base}/${EMAIL_ID}` });
+
+    const replied = await ms.inboxes.threads.emails.reply(
+      INBOX_ID,
+      THREAD_ID,
+      EMAIL_ID,
+      { text: "Thanks, confirmed.", replyAll: true, requiresApproval: true },
+      { idempotencyKey: "r-1" },
+    );
+    expect(calls[2]).toMatchObject({ method: "POST", url: `${base}/${EMAIL_ID}/reply` });
+    expect(calls[2]?.body).toEqual({
+      text: "Thanks, confirmed.",
+      reply_all: true,
+      requires_approval: true,
+    });
+    expect(calls[2]?.headers["Idempotency-Key"]).toBe("r-1");
+    expect(replied.data).toEqual({ kind: "sent", email: SENT_EMAIL });
+
+    await ms.inboxes.threads.emails.forward(
+      INBOX_ID,
+      THREAD_ID,
+      EMAIL_ID,
+      { to: "ops@acme.dev", subject: "Fwd: hi" },
+      { idempotencyKey: "f-1" },
+    );
+    expect(calls[3]).toMatchObject({ method: "POST", url: `${base}/${EMAIL_ID}/forward` });
+    expect(calls[3]?.body).toEqual({ to: "ops@acme.dev", subject: "Fwd: hi" });
+    expect(calls[3]?.headers["Idempotency-Key"]).toBe("f-1");
+
+    const { ms: held } = makeClient({ status: 202, body: DRAFT });
+    const res = await held.inboxes.threads.emails.forward(INBOX_ID, THREAD_ID, EMAIL_ID, {
+      to: "success@simulator.amazonses.com",
+    });
+    expect(res.data).toEqual({ kind: "draft", draft: DRAFT });
+  });
+
+  it("thread emails list and get take includeQuarantined", async () => {
+    const base = `https://api.test/inboxes/${INBOX_ID}/threads/${THREAD_ID}/emails`;
+    const { ms, calls } = makeClient({ body: SENT_EMAIL });
+    await ms.inboxes.threads.emails.list(INBOX_ID, THREAD_ID, {
+      limit: 2,
+      includeQuarantined: true,
+    });
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: `${base}?limit=2&include_quarantined=true`,
+    });
+    await ms.inboxes.threads.emails.get(INBOX_ID, THREAD_ID, EMAIL_ID, {
+      includeQuarantined: true,
+    });
+    expect(calls[1]).toMatchObject({
+      method: "GET",
+      url: `${base}/${EMAIL_ID}?include_quarantined=true`,
+    });
+  });
+
+  it("drafts list, create, get, update, remove and reject", async () => {
+    const base = `https://api.test/inboxes/${INBOX_ID}/drafts`;
+    const { ms, calls } = makeClient({ status: 201, body: DRAFT });
+    await ms.inboxes.drafts.list(INBOX_ID, { limit: 5 });
+    expect(calls[0]).toMatchObject({ method: "GET", url: `${base}?limit=5` });
+
+    const created = await ms.inboxes.drafts.create(INBOX_ID, {
+      to: "success@simulator.amazonses.com",
+      text: "Thanks, confirmed.",
+      threadId: THREAD_ID,
+      replyToEmailId: EMAIL_ID,
+    });
+    expect(calls[1]).toMatchObject({ method: "POST", url: base });
+    expect(calls[1]?.body).toEqual({
+      to: "success@simulator.amazonses.com",
+      text: "Thanks, confirmed.",
+      thread_id: THREAD_ID,
+      reply_to_email_id: EMAIL_ID,
+    });
+    expect(created.data).toEqual(DRAFT);
+
+    await ms.inboxes.drafts.get(INBOX_ID, DRAFT_ID);
+    expect(calls[2]).toMatchObject({ method: "GET", url: `${base}/${DRAFT_ID}` });
+    await ms.inboxes.drafts.update(INBOX_ID, DRAFT_ID, {
+      cc: null,
+      subject: null,
+      html: "<p>x</p>",
+    });
+    expect(calls[3]).toMatchObject({ method: "PATCH", url: `${base}/${DRAFT_ID}` });
+    expect(calls[3]?.body).toEqual({ cc: null, subject: null, html: "<p>x</p>" });
+    await ms.inboxes.drafts.remove(INBOX_ID, DRAFT_ID);
+    expect(calls[4]).toMatchObject({ method: "DELETE", url: `${base}/${DRAFT_ID}` });
+    await ms.inboxes.drafts.reject(INBOX_ID, DRAFT_ID);
+    expect(calls[5]).toMatchObject({ method: "POST", url: `${base}/${DRAFT_ID}/reject` });
+    expect(calls[5]?.body).toBeUndefined();
+  });
+
+  it("drafts.send posts no body with an Idempotency-Key; 200 sent, 202 held", async () => {
+    const sent = { object: "inbox_draft", id: DRAFT_ID, thread_id: THREAD_ID, email_id: EMAIL_ID };
+    const { ms, calls } = makeClient({ body: sent });
+    const res = await ms.inboxes.drafts.send(INBOX_ID, DRAFT_ID, { idempotencyKey: "send-1" });
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: `https://api.test/inboxes/${INBOX_ID}/drafts/${DRAFT_ID}/send`,
+    });
+    expect(calls[0]?.body).toBeUndefined();
+    expect(calls[0]?.headers["Idempotency-Key"]).toBe("send-1");
+    expect(res.data).toEqual({ kind: "sent", email: sent });
+
+    const { ms: held } = makeClient({ status: 202, body: DRAFT });
+    expect((await held.inboxes.drafts.send(INBOX_ID, DRAFT_ID)).data).toEqual({
+      kind: "draft",
+      draft: DRAFT,
+    });
+
+    const agent = {
+      statusCode: 403,
+      name: "approval_required",
+      message: "This draft waits for a person to approve it",
+    };
+    const { ms: refused } = makeClient({ status: 403, body: agent });
+    expect(await refused.inboxes.drafts.send(INBOX_ID, DRAFT_ID)).toEqual({
+      data: null,
+      error: { ...agent, retryAfter: null },
+    });
+  });
+});
+
+describe("inbox fields on existing resources", () => {
+  it("webhooks carry inbox_ids on create and update", async () => {
+    const { ms, calls } = makeClient({ body: { object: "webhook", id: "w1" } });
+    await ms.webhooks.create({
+      endpoint: "https://acme.dev/hooks",
+      events: ["email.received", "inbox.email.received"],
+      inboxIds: [INBOX_ID],
+    });
+    expect(calls[0]?.body).toEqual({
+      endpoint: "https://acme.dev/hooks",
+      events: ["email.received", "inbox.email.received"],
+      inbox_ids: [INBOX_ID],
+    });
+    await ms.webhooks.update("w1", { inboxIds: null });
+    expect(calls[1]?.body).toEqual({ inbox_ids: null });
+  });
+
+  it("apiKeys.create restricts a key to an inbox", async () => {
+    const { ms, calls } = makeClient({ body: { id: "k1", token: "ms_secret" } });
+    await ms.apiKeys.create({ name: "agent", permission: "full_access", inboxId: INBOX_ID });
+    expect(calls[0]?.body).toEqual({
+      name: "agent",
+      permission: "full_access",
+      inbox_id: INBOX_ID,
+    });
+  });
+
+  it("domains.update toggles catch-all", async () => {
+    const { ms, calls } = makeClient({ body: { object: "domain", receiving_catch_all: false } });
+    const res = await ms.domains.update({ id: "d1", receivingCatchAll: false });
+    expect(calls[0]?.body).toEqual({ receiving_catch_all: false });
+    expect(res.data?.receiving_catch_all).toBe(false);
+  });
+});
+
+describe("domains: the shared row", () => {
+  const OWN = {
+    id: OWN_DOMAIN_ID,
+    name: "acme.dev",
+    status: "verified",
+    created_at: "2026-10-14T09:00:00.000Z",
+    region: "us-east-1",
+    open_tracking: true,
+    click_tracking: true,
+    tracking_subdomain: "links",
+    capabilities: { sending: "enabled", receiving: "enabled" },
+    receiving_catch_all: false,
+    shared: false,
+  };
+  const SHARED = {
+    id: DOMAIN_ID,
+    name: "acme.agents.example.com",
+    status: "verified",
+    created_at: "2026-10-12T10:00:00.000Z",
+    region: "us-east-1",
+    open_tracking: false,
+    click_tracking: false,
+    tracking_subdomain: null,
+    capabilities: { sending: "enabled", receiving: "enabled" },
+    receiving_catch_all: false,
+    shared: true,
+    sending_mode: "reply_only",
+    sending_mode_reason: "plan",
+  };
+
+  it("list returns own domains, then the shared row", async () => {
+    const list = { object: "list", has_more: false, data: [OWN, SHARED] };
+    const { ms } = makeClient({ body: list });
+    const res = await ms.domains.list();
+    expect(res.data).toEqual(list);
+    const [own, shared] = res.data?.data ?? [];
+    expect(own?.shared).toBe(false);
+    expect(own?.sending_mode).toBeUndefined();
+    expect(own?.sending_mode_reason).toBeUndefined();
+    expect(shared?.shared).toBe(true);
+    expect(shared?.sending_mode).toBe("reply_only");
+    expect(shared?.sending_mode_reason).toBe("plan");
+  });
+
+  it("a domain from a server before v0.14.0 has no shared key, read as false", async () => {
+    const { shared: _, ...older } = OWN;
+    const { ms } = makeClient({ body: older });
+    const res = await ms.domains.get(OWN_DOMAIN_ID);
+    expect(res.data).toEqual(older);
+    expect(res.data?.shared ?? false).toBe(false);
+  });
+
+  it("get returns the shared row with no records; open mode has a null reason", async () => {
+    const detail = {
+      object: "domain",
+      ...SHARED,
+      sending_mode: "open",
+      sending_mode_reason: null,
+      records: [],
+    };
+    const { ms, calls } = makeClient({ body: detail });
+    const res = await ms.domains.get(DOMAIN_ID);
+    expect(calls[0]).toMatchObject({ method: "GET", url: `https://api.test/domains/${DOMAIN_ID}` });
+    expect(res.data).toEqual(detail);
+    expect(res.data?.records).toEqual([]);
+    expect(res.data?.sending_mode_reason).toBeNull();
+  });
+
+  it("tolerates a sending_mode it does not know (open set)", async () => {
+    const { ms } = makeClient({ body: { ...SHARED, sending_mode: "paused_for_review" } });
+    const res = await ms.domains.get(DOMAIN_ID);
+    expect(res.data?.sending_mode).toBe("paused_for_review");
+    const future: DomainSendingMode = "paused_for_review";
+    expect(future).toBe("paused_for_review");
+  });
+
+  it("changing the shared row is a 403 forbidden", async () => {
+    const forbidden = {
+      statusCode: 403,
+      name: "forbidden",
+      message:
+        "acme.agents.example.com is your team's subdomain of the shared domain: it can't be changed or deleted",
+    };
+    const { ms } = makeClient({ status: 403, body: forbidden });
+    expect(await ms.domains.update({ id: DOMAIN_ID, clickTracking: true })).toEqual({
+      data: null,
+      error: { ...forbidden, retryAfter: null },
+    });
   });
 });

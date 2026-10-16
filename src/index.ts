@@ -6,6 +6,7 @@ import { Contacts } from "./resources/contacts.js";
 import { Deliverability } from "./resources/deliverability.js";
 import { Domains } from "./resources/domains.js";
 import { Batch, Emails } from "./resources/emails.js";
+import { Inboxes } from "./resources/inboxes.js";
 import { Segments } from "./resources/segments.js";
 import { Suppressions } from "./resources/suppressions.js";
 import { Templates } from "./resources/templates.js";
@@ -34,6 +35,7 @@ import { Webhooks } from "./resources/webhooks.js";
 export class MillionSend {
   readonly emails: Emails;
   readonly batch: Batch;
+  readonly inboxes: Inboxes;
   readonly contacts: Contacts;
   readonly contactProperties: ContactProperties;
   readonly broadcasts: Broadcasts;
@@ -57,6 +59,7 @@ export class MillionSend {
     const http = new HttpClient(key, options);
     this.emails = new Emails(http);
     this.batch = new Batch(http);
+    this.inboxes = new Inboxes(http);
     this.contacts = new Contacts(http);
     this.contactProperties = new ContactProperties(http);
     this.broadcasts = new Broadcasts(http);

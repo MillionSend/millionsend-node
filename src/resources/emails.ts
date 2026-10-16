@@ -15,6 +15,7 @@ import type {
   UpdateEmailOptions,
   UpdateEmailResponse,
 } from "../types.js";
+import { Receiving } from "./receiving.js";
 
 function toWire(o: SendEmailOptions) {
   return {
@@ -42,9 +43,18 @@ function toWire(o: SendEmailOptions) {
 }
 
 export class Emails {
-  constructor(private readonly http: HttpClient) {}
+  readonly receiving: Receiving;
 
-  /** POST /emails — supports an Idempotency-Key. */
+  constructor(private readonly http: HttpClient) {
+    this.receiving = new Receiving(http);
+  }
+
+  /**
+   * POST /emails — supports an Idempotency-Key. The shared domain sends only in
+   * `sending_mode: "open"`, from an inbox's exact address (display name omitted
+   * or its `from_name`), without `replyTo`, `attachments`, `headers` or
+   * `scheduledAt`, to at most 10 recipients.
+   */
   send(
     payload: SendEmailOptions,
     options: RequestOptions = {},
@@ -109,7 +119,10 @@ export class Emails {
 export class Batch {
   constructor(private readonly http: HttpClient) {}
 
-  /** POST /emails/batch — 1–100 emails in one call; supports an Idempotency-Key and `batchValidation`. */
+  /**
+   * POST /emails/batch — 1–100 emails in one call; supports an Idempotency-Key and `batchValidation`.
+   * An item from the shared domain is refused (403 `inbox_send_policy`).
+   */
   send(
     payload: SendEmailOptions[],
     options: BatchRequestOptions = {},

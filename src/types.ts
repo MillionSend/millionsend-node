@@ -20,11 +20,23 @@ export interface BatchError {
   message: string;
 }
 
+/** A contacts batch failure also names what strict mode would answer for the item. */
+export interface BatchContactError extends BatchError {
+  /** Absent on instances before v0.12.0. */
+  statusCode?: number;
+  /** Absent on instances before v0.12.0. */
+  name?: string;
+}
+
 // ---- shared list envelope ------------------------------------------------
 export interface ListOptions {
   limit?: number;
-  /** Keyset cursor: return items after this id. Mutually exclusive with `before`. */
+  /**
+   * Keyset cursor: the last id of a page; returns the next page (older items
+   * on the newest-first lists). Mutually exclusive with `before`.
+   */
   after?: string;
+  /** The first id of a page; returns the previous page (newer items on the newest-first lists). */
   before?: string;
 }
 
@@ -46,8 +58,11 @@ export interface Attachment {
 }
 
 export interface SendEmailOptions {
+  /** An address on a verified domain, or an inbox's exact address on the shared domain (open mode only). */
   from: string;
+  /** An address here or in cc/bcc on a domain that can never receive mail (`example.com`, `.test`, …) answers 422. */
   to: Recipients;
+  /** Up to 998 characters. */
   subject: string;
   html?: string;
   text?: string;
@@ -339,7 +354,7 @@ export interface BatchContactsResponse {
   data: BatchContactResult[];
   counts: { created: number; updated: number; skipped: number; failed: number };
   /** Present in permissive mode: the items that were not written. */
-  errors?: BatchError[];
+  errors?: BatchContactError[];
 }
 
 /** Address a contact by id, email or Resend's `contactId` (email wins). */
@@ -435,7 +450,9 @@ export interface RemoveTopicResponse {
 export interface CreateBroadcastOptions {
   name?: string;
   segmentId?: string;
+  /** Never the shared domain: sending from it answers 403 `inbox_send_policy`. */
   from: string;
+  /** Up to 998 characters. */
   subject: string;
   html?: string;
   text?: string;
@@ -598,6 +615,9 @@ export interface DomainCapabilities {
   receiving: string;
 }
 
+/** What the team's addresses on the shared domain may send: start conversations, reply in threads, or nothing. */
+export type DomainSendingMode = "open" | "reply_only" | "receive_only" | (string & {});
+
 export interface CreateDomainOptions {
   name: string;
   /** Each deployment serves one region and rejects any other; omit to use it. */
@@ -619,6 +639,11 @@ export interface UpdateDomainOptions {
   /** Accepted for Resend payload compatibility; MillionSend ignores them. */
   tls?: "enforced" | "opportunistic";
   capabilities?: Partial<DomainCapabilities>;
+  /**
+   * Accept mail for addresses that have no inbox (they land in received mail).
+   * Off, those addresses are refused. Turning it on needs a paid plan on Cloud.
+   */
+  receivingCatchAll?: boolean;
 }
 
 export interface DomainRecord {
@@ -641,6 +666,17 @@ export interface DomainListItem {
   click_tracking: boolean;
   tracking_subdomain: string | null;
   capabilities: DomainCapabilities;
+  /** Whether mail to addresses without an inbox is accepted; absent on instances before inboxes. */
+  receiving_catch_all?: boolean;
+  /**
+   * The team's read-only subdomain of the shared inbox domain, listed last; it
+   * sends only from its inboxes' own addresses. Absent before v0.14.0: read it as false.
+   */
+  shared?: boolean;
+  /** Shared row only. */
+  sending_mode?: DomainSendingMode;
+  /** Shared row only: what holds sending below `open`; null in open mode. */
+  sending_mode_reason?: "plan" | "instance" | (string & {}) | null;
 }
 
 export interface CreateDomainResponse extends DomainListItem {
@@ -680,6 +716,22 @@ export type WebhookEvent =
   | "contact.topic_opt_out"
   | "suppression.added"
   | "suppression.removed"
+  | "email.received"
+  // Inbox events reach only endpoints that list them; "all events" never includes them.
+  | "inbox.created"
+  | "inbox.updated"
+  | "inbox.deleted"
+  | "inbox.expired"
+  | "inbox.thread.created"
+  | "inbox.thread.folder.updated"
+  | "inbox.thread.labels.updated"
+  | "inbox.email.received"
+  | "inbox.email.sent"
+  | "inbox.email.quarantined"
+  | "inbox.draft.created"
+  | "inbox.draft.updated"
+  | "inbox.draft.sent"
+  | "inbox.draft.deleted"
   | (string & {});
 
 export type WebhookStatus = "enabled" | "disabled";
@@ -689,12 +741,16 @@ export interface CreateWebhookOptions {
   events: WebhookEvent[];
   /** Carry over an existing `whsec_…` secret so the receiver keeps verifying unchanged; omit to mint one. */
   signingSecret?: string;
+  /** Deliver inbox events and `email.received` only for these inboxes; null or omitted = every inbox. */
+  inboxIds?: string[] | null;
 }
 
 export interface UpdateWebhookOptions {
   endpoint?: string;
   events?: WebhookEvent[];
   status?: WebhookStatus;
+  /** null delivers for every inbox again. */
+  inboxIds?: string[] | null;
 }
 
 export interface CreateWebhookResponse {
@@ -709,6 +765,8 @@ export interface WebhookListItem {
   created_at: string;
   status: WebhookStatus;
   events: string[] | null;
+  /** The inboxes this endpoint is limited to; null = every inbox. Absent on instances before inboxes. */
+  inbox_ids?: string[] | null;
 }
 
 export interface Webhook extends WebhookListItem {
@@ -750,10 +808,15 @@ export interface CreateApiKeyOptions {
   name: string;
   /** Defaults to full_access. */
   permission?: ApiKeyPermission;
-  /** Restrict a sending_access key to one domain. */
+  /** Restrict a sending_access key to one domain: a `shared: false` row of `domains.list`. */
   domainId?: string | null;
   /** Resend's spelling of `domainId`; either works. */
   domain_id?: string | null;
+  /**
+   * Restrict a full_access key to one inbox: it reads that inbox and sends
+   * only from its address. Up to 5 per inbox; cannot be combined with a domain.
+   */
+  inboxId?: string | null;
 }
 
 export interface CreateApiKeyResponse {
@@ -767,6 +830,8 @@ export interface ApiKeyListItem {
   name: string;
   created_at: string;
   last_used_at: string | null;
+  /** Set on an inbox-scoped key; absent on instances before inboxes. */
+  inbox_id?: string | null;
 }
 
 export interface RemoveApiKeyResponse {
@@ -846,10 +911,673 @@ export interface Usage {
   cloud: boolean;
   /** Effective plan; null when self-hosted. */
   plan: "free" | "pro" | "scale" | null;
-  /** null = unlimited or self-hosted. */
-  limits: { emails_per_day: number | null; domains: number | null };
+  /** null = unlimited or self-hosted. `inboxes` is absent on instances before inboxes. */
+  limits: { emails_per_day: number | null; domains: number | null; inboxes?: number | null };
   today: { emails_sent: number; resets_at: string };
   team: { id: string; name: string };
   /** Dashboard origin, for building links; null when unset. */
   app_url: string | null;
+}
+
+// ---- received mail -------------------------------------------------------
+// MillionSend's own enums are open sets (the API may grow them); Resend's
+// (folder, direction, draft type) never gain values, so they stay closed.
+export type SenderTrust =
+  | "owner"
+  | "allowlisted"
+  | "known_thread"
+  | "external"
+  | "unauthenticated"
+  | "failed"
+  | (string & {});
+export type ScreeningVerdict =
+  | "pending"
+  | "clean"
+  | "suspicious"
+  | "quarantined"
+  | "released"
+  | (string & {});
+export type QuarantineReason =
+  | "failed_auth"
+  | "unauthenticated_sender"
+  | "not_allowlisted"
+  | "injection"
+  | "phishing"
+  | "virus"
+  | "unscreened"
+  | "screening_cap"
+  | (string & {});
+export type SpamVerdict = "pass" | "gray" | "fail" | (string & {});
+export type VirusVerdict = "pass" | "fail" | "processing_failed" | (string & {});
+export type ExtractedKind = "code" | "link" | (string & {});
+
+/** The verdict and the sender's trust tier, as lists carry them. */
+export interface ScreeningSummary {
+  verdict: ScreeningVerdict;
+  sender_trust: SenderTrust;
+}
+
+/** How an inbox screened one message. Scores are 0–100, null when it was not judged. */
+export interface Screening extends ScreeningSummary {
+  /** Set while quarantined or after a release. */
+  quarantine_reason: QuarantineReason | null;
+  reasons: string[];
+  injection_score: number | null;
+  phishing_score: number | null;
+  hidden_text_removed: boolean;
+}
+
+export interface ReceivedEmailAttachment {
+  id: string;
+  filename: string | null;
+  content_type: string;
+  content_id: string | null;
+  content_disposition: string | null;
+  size: number;
+}
+
+/** One inbox a received message landed in (owner views). */
+export interface ReceivedEmailInbox {
+  inbox_id: string;
+  thread_id: string;
+  verdict: ScreeningVerdict;
+}
+
+/** Fields after `attachments` are MillionSend extensions, absent on instances before inboxes. */
+export interface ReceivedEmailListItem {
+  id: string;
+  to: string[];
+  /** Bare address; the display name is in the detail's `headers.from`. */
+  from: string;
+  created_at: string;
+  subject: string;
+  bcc: string[];
+  cc: string[];
+  reply_to: string[];
+  /** The team's envelope recipients: the addresses the message was delivered to. */
+  received_for: string[];
+  message_id: string;
+  attachments: ReceivedEmailAttachment[];
+  inbox_id?: string | null;
+  thread_id?: string | null;
+  /** Owner views only. */
+  inboxes?: ReceivedEmailInbox[];
+  screening?: ScreeningSummary | null;
+  spam_verdict?: SpamVerdict | null;
+  virus_verdict?: VirusVerdict | null;
+  extracted?: { kinds: ExtractedKind[] };
+  /** Present with an inbox context. */
+  read?: boolean;
+}
+
+/** A membership held for screening or quarantine; the long-poll reports ids and why only. */
+export interface HeldEmail {
+  id: string;
+  /** Null for a catch-all copy held for a virus. */
+  inbox_id: string | null;
+  reason: "pending" | "quarantined";
+  /** Why it was quarantined; null while it is still being screened. */
+  quarantine_reason: QuarantineReason | null;
+  created_at: string;
+}
+
+export interface ReceivedEmailList extends List<ReceivedEmailListItem> {
+  /** Long-poll (`wait`) only: held messages that matched since the cursor. */
+  held?: HeldEmail[];
+}
+
+export interface ListReceivedEmailsOptions extends ListOptions {
+  /** Long-poll: hold the request up to this many seconds (0–50) until a matching email arrives. */
+  wait?: number;
+  /** ISO 8601: only mail received after this instant. */
+  since?: string;
+  /** An unknown inbox answers 404 `not_found` at once, even with `wait`. */
+  inboxId?: string;
+  /** An address the message was delivered to (`received_for`). */
+  to?: string;
+  /** A sender address, or a domain covering its subdomains. */
+  from?: string;
+  subjectContains?: string;
+  /** Needs `inboxId`, except with an inbox-scoped key, which reads its own inbox. */
+  unread?: boolean;
+  /** Also list held mail (full-access team keys only). */
+  includeQuarantined?: boolean;
+  /** List only held mail (full-access team keys only). */
+  quarantined?: boolean;
+}
+
+export interface GetReceivedEmailOptions {
+  /** `data_uri` (default) inlines `cid:` images; `cid` leaves the references. */
+  htmlFormat?: "data_uri" | "cid";
+}
+
+/** A verification code or sign-in link found in the message (`extract_codes` inboxes). */
+export interface ReceivedExtracted {
+  kinds: ExtractedKind[];
+  code?: string | null;
+  link?: string | null;
+  link_domain_matches_sender?: boolean | null;
+  ambiguous?: boolean;
+}
+
+export interface ReceivedEmail extends ReceivedEmailListItem {
+  object: "email";
+  html: string | null;
+  html_format: "data_uri" | "cid";
+  /** Invisible characters removed; `html` and `raw` stay byte-faithful. */
+  text: string | null;
+  headers: Record<string, string> | null;
+  authentication: { spf: string; dkim: string; dmarc: string };
+  /** Signed link to the original message, valid for one hour; null once purged or when it carries malware. */
+  raw: { download_url: string; expires_at: string } | null;
+  screening?: Screening | null;
+  spam_score?: number | null;
+  virus_signature?: string | null;
+  /** The new part of the message as plain text: hidden text, quotes and the signature removed. */
+  extracted_text?: string | null;
+  extracted?: ReceivedExtracted;
+}
+
+export interface ReceivedAttachment {
+  id: string;
+  filename?: string;
+  size: number;
+  content_type: string;
+  content_disposition: "inline" | "attachment";
+  content_id?: string;
+  /** Signed link to the bytes, valid for one hour; it needs no API key. */
+  download_url: string;
+  expires_at: string;
+}
+
+export interface ReceivedAttachmentDetail extends ReceivedAttachment {
+  object: "attachment";
+}
+
+export interface ReplyThreadEmailOptions {
+  html?: string;
+  text?: string;
+  cc?: Recipients;
+  bcc?: Recipients;
+  /** Defaults to `Re: ` plus the thread subject. */
+  subject?: string;
+  /** Also copy the message's other recipients. */
+  replyAll?: boolean;
+  /** Hold it as a draft for a person to approve. */
+  requiresApproval?: boolean;
+}
+
+export interface ReplyReceivedEmailOptions extends ReplyThreadEmailOptions {
+  /** An address on a verified team domain; defaults to the inbox the message landed in. */
+  from?: string;
+  /** Reply as this inbox when the message landed in several. */
+  inboxId?: string;
+}
+
+export interface ForwardThreadEmailOptions {
+  to: Recipients;
+  cc?: Recipients;
+  bcc?: Recipients;
+  /** A note above the forwarded message. */
+  html?: string;
+  text?: string;
+  /** Defaults to `Fwd: ` plus the thread subject. */
+  subject?: string;
+  requiresApproval?: boolean;
+}
+
+export interface ForwardReceivedEmailOptions extends ForwardThreadEmailOptions {
+  from?: string;
+  inboxId?: string;
+  /** `inline` (default) quotes the message; `attachment` attaches it as `forwarded_message.eml`. */
+  mode?: "inline" | "attachment";
+}
+
+/** What `emails.receiving.reply` / `forward` sent. */
+export interface ReceivedEmailSent {
+  object: "email";
+  id: string;
+  thread_id: string | null;
+  inbox_id: string | null;
+}
+
+/**
+ * The outcome of a send from an inbox: sent now, or held as a draft that waits
+ * for a person (HTTP 202) because the inbox's rules or `requiresApproval` asked.
+ */
+export type InboxSendOutcome<T> = { kind: "sent"; email: T } | { kind: "draft"; draft: Draft };
+
+// ---- inboxes -------------------------------------------------------------
+export type InboxKind = "agent" | "human" | (string & {});
+
+/** Fields after `created_at` are MillionSend extensions. */
+export interface Inbox {
+  object: "inbox";
+  id: string;
+  name: string;
+  email_address: string;
+  /** For an address on the shared domain, the id of the team's `shared: true` row of `domains.list`. */
+  domain_id: string;
+  receiving_address: string | null;
+  from_name: string | null;
+  /** Threads with an unread message. */
+  unread: number;
+  /** Unsent drafts. */
+  drafts: number;
+  last_received: string | null;
+  created_at: string;
+  kind: InboxKind;
+  /** The address is on the instance's shared domain. */
+  shared: boolean;
+  expires_at: string | null;
+  /** Messages in quarantine, not released. */
+  quarantined: number;
+  pending_approval: number;
+}
+
+export interface InboxListItem {
+  id: string;
+  name: string | null;
+  email_address: string;
+  from_name: string | null;
+  unread: number;
+  last_received: string | null;
+  kind: InboxKind;
+  shared: boolean;
+  expires_at: string | null;
+}
+
+/** An inbox's safety rules. */
+export interface InboxSafety {
+  accept_from: "anyone" | "verified" | "allowlist" | (string & {});
+  /** `local@domain` (exact) or `*@domain` (the domain and its subdomains). */
+  allowlist: string[];
+  /** Owners besides the team members' login addresses; on the shared domain they are not trusted senders. */
+  owner_addresses: string[];
+  /** Score external and unauthenticated mail for prompt injection (agent inboxes). */
+  screening: boolean;
+  extract_codes: boolean;
+  send_policy: "reply_only" | "allowlist" | "open" | (string & {});
+  require_approval: boolean;
+  private_codes: boolean;
+  /** Recipients per UTC day sent without approval; null = no inbox cap. */
+  send_cap: number | null;
+  forward_to: string[];
+}
+
+export interface InboxSafetyResponse extends InboxSafety {
+  object: "inbox_safety";
+  inbox_id: string;
+}
+
+/** A change to an inbox's safety rules; omitted fields keep their value. */
+export interface InboxSafetyOptions {
+  acceptFrom?: InboxSafety["accept_from"];
+  allowlist?: string[];
+  ownerAddresses?: string[];
+  screening?: boolean;
+  extractCodes?: boolean;
+  /** On the shared domain, `allowlist` answers 422, and so does `open` unless the domain's `sending_mode` is `open`. */
+  sendPolicy?: InboxSafety["send_policy"];
+  requireApproval?: boolean;
+  privateCodes?: boolean;
+  sendCap?: number | null;
+  /** Team members' login addresses or `ownerAddresses` only; on the shared domain, members only. */
+  forwardTo?: string[];
+}
+
+export interface CreateInboxOptions {
+  /** An address on a verified domain; omit it for an address on the instance's shared domain. */
+  emailAddress?: string;
+  /**
+   * Instead of `emailAddress`, the id of a `domains.list` row: the `shared: true`
+   * row works like omitting both; one of your domains needs `username`.
+   */
+  domainId?: string;
+  /**
+   * The part before the @. On the shared domain it is optional (random when
+   * omitted): 1–64 of `a-z 0-9 . _ -`, starting and ending with a letter or
+   * digit; reserved names and brand look-alikes answer 422, one in use 409.
+   * Required with the `domainId` of one of your domains.
+   */
+  username?: string;
+  /** 1–320 characters. */
+  name?: string;
+  /** Display name for sending; a plain name, not `Name <email>`. Reviewed on the shared domain. */
+  fromName?: string;
+  /** Receive at a generated `receiving_address` on the shared domain instead of the domain's MX. */
+  forwarding?: boolean;
+  /** Defaults to "agent". */
+  kind?: "agent" | "human";
+  /**
+   * `"1h"` to `"365d"`; omitted or null, the inbox never expires. A shared-domain
+   * inbox unused for 90 days is deleted either way.
+   */
+  expiresIn?: string | null;
+  /** Starting safety rules on top of the kind's defaults. */
+  safety?: InboxSafetyOptions;
+}
+
+export interface UpdateInboxOptions {
+  /** 1–320 characters. */
+  name?: string;
+  /** "" removes it. Reviewed on the shared domain. */
+  fromName?: string;
+  /** A new lifetime counted from now, `"1h"` to `"365d"`; null never expires. */
+  expiresIn?: string | null;
+}
+
+export interface ListInboxesOptions extends ListOptions {
+  kind?: InboxKind;
+}
+
+export interface RemoveInboxResponse {
+  object: "inbox";
+  id: string;
+  deleted: true;
+}
+
+export interface LatestCodeOptions {
+  /** A sender address, or a domain covering its subdomains. */
+  from?: string;
+  /** Long-poll up to this many seconds (0–50) for a code to arrive. */
+  wait?: number;
+  /** Oldest message to consider, in seconds since delivery or release (60–86400; the API defaults to 600). */
+  maxAge?: number;
+  /**
+   * ISO 8601 with an offset: only mail received after this instant. Pass the
+   * previous code's `received_at` so a second sign-in waits for its own code.
+   */
+  since?: string;
+}
+
+export interface VerificationCode {
+  object: "verification_code";
+  /** `timeout` only when `wait` ran out with nothing new. */
+  status: "found" | "none" | "ambiguous" | "timeout" | (string & {});
+  kind: "otp" | "link" | null;
+  code: string | null;
+  url: string | null;
+  link_domain_matches_sender: boolean | null;
+  email_id: string | null;
+  from: string | null;
+  received_at: string | null;
+  sender_trust: SenderTrust | null;
+}
+
+export interface QuarantinedEmail {
+  id: string;
+  /** Null for a catch-all copy held for a virus, which belongs to no inbox. */
+  thread_id: string | null;
+  from: string;
+  subject: string | null;
+  received_at: string;
+  quarantine_reason: QuarantineReason;
+  sender_trust: SenderTrust;
+  injection_score: number | null;
+  phishing_score: number | null;
+  virus_signature: string | null;
+}
+
+export interface ReleaseQuarantinedOptions {
+  /** Also add the sender to the inbox's allowlist. */
+  trustSender?: boolean;
+}
+
+export interface QuarantineRelease {
+  object: "inbox_release";
+  inbox_id: string;
+  email_id: string;
+  released_at: string;
+  /** The address added to the allowlist, or null. */
+  trusted_sender: string | null;
+}
+
+// ---- inbox labels --------------------------------------------------------
+export interface ThreadLabel {
+  id: string;
+  name: string;
+  /** `#RRGGBB`, uppercase. */
+  color: string;
+}
+
+export interface Label extends ThreadLabel {
+  created_at: string;
+}
+
+/** Labels are not paginated: every label of the inbox, oldest first. */
+export interface LabelList {
+  object: "list";
+  data: Label[];
+}
+
+/** What creating or updating a label answers: the whole label. */
+export interface LabelAck extends Label {
+  object: "inbox_label";
+}
+
+export interface CreateLabelOptions {
+  name: string;
+  /** `#RRGGBB`; random when omitted. */
+  color?: string;
+}
+
+export interface UpdateLabelOptions {
+  name?: string;
+  color?: string;
+}
+
+export interface RemoveLabelResponse {
+  object: "inbox_label";
+  id: string;
+  deleted: true;
+}
+
+// ---- inbox threads -------------------------------------------------------
+export type ThreadFolder = "inbox" | "archive" | "spam" | "sent" | "trash";
+/** `sent` is assigned by the API and cannot be set. */
+export type MoveThreadFolder = "inbox" | "archive" | "spam" | "trash";
+
+export interface ThreadSummary {
+  object: "inbox_thread";
+  id: string;
+  subject: string | null;
+  folder: ThreadFolder;
+  labels: ThreadLabel[];
+  read: boolean;
+  /** MillionSend extension: held messages (owner views; 0 for agent views). */
+  quarantined: number;
+}
+
+export interface ThreadListItem {
+  id: string;
+  subject: string | null;
+  /** The latest inbound sender (`Name <address>`), or the inbox address for outbound-only threads. */
+  from: string | null;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  labels: ThreadLabel[];
+  message_count: number;
+  has_attachment: boolean;
+  has_draft: boolean;
+  read: boolean;
+  /** With `includeQuarantined` in owner views: messages in quarantine, not released. */
+  quarantined?: number;
+  /** Last activity; the sort key. */
+  received_at: string;
+  folder: ThreadFolder;
+}
+
+export interface ThreadSearchResult extends ThreadListItem {
+  matched_email_id: string | null;
+  /** Only the keys that matched, each a list of fragments with `**match**` markers. */
+  highlights: Partial<Record<"subject" | "from" | "to" | "cc" | "bcc" | (string & {}), string[]>>;
+}
+
+export interface GetThreadEmailOptions {
+  /** Owner views: also read a held message (full-access team keys only). */
+  includeQuarantined?: boolean;
+}
+
+export interface ListThreadEmailsOptions extends ListOptions, GetThreadEmailOptions {}
+
+export interface ListThreadsOptions extends ListOptions {
+  /** Defaults to `inbox` (`inbox`, `archive`, `sent` with `labels`). */
+  folders?: ThreadFolder[];
+  /** Label ids, any-match (up to 50). */
+  labels?: string[];
+  read?: boolean;
+  /** Owner views: also list threads whose messages are all held. */
+  includeQuarantined?: boolean;
+}
+
+export interface SearchThreadsOptions extends ListThreadsOptions {
+  /** Every word must match subject, sender or recipients; `"phrase"`, `-word`. */
+  query?: string;
+  /** Substrings of the address or name, any-match (up to 20 each). */
+  from?: string[];
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  hasAttachment?: boolean;
+  /** `YYYY-MM-DD` (the whole day) or ISO 8601. */
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface UpdateThreadOptions {
+  /** Marks every message. */
+  read?: boolean;
+  folder?: MoveThreadFolder;
+  /** Applies a label; labels cannot be removed through the API. */
+  labelId?: string;
+}
+
+export interface RemoveThreadResponse {
+  object: "inbox_thread";
+  id: string;
+  /** False when the thread was already in trash. */
+  deleted: boolean;
+}
+
+export interface ThreadEmailAttachment {
+  /** A UUID on received mail; the position ("0", "1", …) on mail the inbox sent. */
+  id: string;
+  filename: string | null;
+  size: number | null;
+}
+
+/** Fields after `received_at` are MillionSend extensions. */
+export interface ThreadEmail {
+  id: string;
+  direction: "inbound" | "outbound";
+  /** `Name <address>` when the sender has a display name. */
+  from: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  reply_to: string[];
+  subject: string | null;
+  message_id: string | null;
+  html: string | null;
+  text: string | null;
+  attachments: ThreadEmailAttachment[];
+  read: boolean;
+  received_at: string;
+  /** Inbound only. */
+  extracted_text?: string | null;
+  screening?: Screening;
+  spam_verdict?: SpamVerdict | null;
+  virus_verdict?: VirusVerdict | null;
+  /** Outbound only: the email's last delivery event. */
+  status?: string;
+}
+
+export interface SentEmail extends ThreadEmail {
+  email_id: string;
+  thread_id: string | null;
+  inbox_id: string | null;
+}
+
+// ---- inbox drafts --------------------------------------------------------
+export type DraftStatus =
+  | "draft"
+  | "pending_approval"
+  | "sent"
+  | "rejected"
+  | "expired"
+  | (string & {});
+
+/** Fields after `updated_at` are MillionSend extensions. */
+export interface Draft {
+  object: "inbox_draft";
+  id: string;
+  type: "standalone" | "reply";
+  to: string[] | null;
+  cc: string[];
+  bcc: string[];
+  subject: string | null;
+  html: string | null;
+  text: string | null;
+  thread_id: string | null;
+  reply_to_email_id: string | null;
+  /** Set once sent. */
+  email_id: string | null;
+  created_at: string;
+  updated_at: string;
+  status: DraftStatus;
+  /** Why it waits for a person, e.g. `send_policy`, `ramp`, `approval_required`, `reply_to_redirect`. */
+  approval_reasons: string[];
+  forward: boolean;
+  decided_by: string | null;
+  decided_at: string | null;
+  expires_at: string | null;
+}
+
+export interface DraftListItem {
+  id: string;
+  type: "standalone" | "reply";
+  to: string[] | null;
+  cc: string[];
+  bcc: string[];
+  subject: string | null;
+  snippet: string | null;
+  thread_id: string | null;
+  reply_to_email_id: string | null;
+  updated_at: string;
+  status: DraftStatus;
+  approval_reasons: string[];
+}
+
+export interface UpdateDraftOptions {
+  /** null clears. */
+  to?: Recipients | null;
+  /** null or [] clears. */
+  cc?: Recipients | null;
+  bcc?: Recipients | null;
+  subject?: string | null;
+  /** Setting `html` or `text` replaces the whole body; the part you omit becomes null. */
+  html?: string | null;
+  text?: string | null;
+}
+
+export interface CreateDraftOptions extends UpdateDraftOptions {
+  /** A reply draft names both the thread and the email it answers, or neither. */
+  threadId?: string;
+  replyToEmailId?: string;
+}
+
+export interface RemoveDraftResponse {
+  object: "inbox_draft";
+  id: string;
+  deleted: true;
+}
+
+/** What `drafts.send` sent. */
+export interface SentDraft {
+  object: "inbox_draft";
+  id: string;
+  thread_id: string | null;
+  email_id: string;
 }

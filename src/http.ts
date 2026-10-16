@@ -1,9 +1,11 @@
 import { type ErrorResponse, type Result, toErrorResponse } from "./error.js";
-import type { BatchValidation } from "./types.js";
+import type { BatchValidation, Draft, InboxSendOutcome } from "./types.js";
 
 const DEFAULT_BASE_URL = "https://api.millionsend.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SDK_VERSION = "0.8.0";
+/** Time a long-poll answer may take to arrive after the server's own `wait` deadline. */
+const LONG_POLL_MARGIN_MS = 10_000;
+const SDK_VERSION = "0.9.0";
 
 export interface MillionSendOptions {
   /**
@@ -27,7 +29,7 @@ export interface MillionSendOptions {
 }
 
 export interface RequestOptions {
-  /** POST-only idempotency key (emails.send, batch.send). */
+  /** POST-only idempotency key (emails.send, batch.send, replies, forwards, drafts.send). */
   idempotencyKey?: string;
 }
 
@@ -62,6 +64,23 @@ function isInsecureHttpUrl(url: string): boolean {
   }
   if (parsed.protocol !== "http:") return false;
   return !LOOPBACK_HOSTS.has(parsed.hostname) && !parsed.hostname.startsWith("127.");
+}
+
+/**
+ * Whether a path has an empty, "." or ".." segment: URL normalization
+ * resolves those away, so an id such as ".." would send the request to
+ * another resource (DELETE /inboxes/{id}/labels/.. deletes the inbox).
+ */
+function hasDotSegment(path: string): boolean {
+  return path
+    .split("/")
+    .slice(1)
+    .some((segment) => segment === "" || segment === "." || segment === "..");
+}
+
+/** `retry-after` in seconds; null when absent or not a whole number of seconds (the API sends only those). */
+function retryAfterSeconds(header: string | null): number | null {
+  return header !== null && /^\s*\d+\s*$/.test(header) ? Number(header) : null;
 }
 
 function queryString(query: Record<string, string | number | undefined> | undefined): string {
@@ -109,14 +128,42 @@ export class HttpClient {
     this.userAgent = options.userAgent ? `${base} ${options.userAgent}` : base;
   }
 
-  async request<T>({
+  async request<T>(req: DoRequest): Promise<Result<T>> {
+    return (await this.call<T>(req)).result;
+  }
+
+  /**
+   * A send a person may have to approve (replies, forwards, drafts.send): an
+   * HTTP 202 answer is the draft the API held for approval, any other success
+   * the sent email.
+   */
+  async requestOutcome<T>(req: DoRequest): Promise<Result<InboxSendOutcome<T>>> {
+    const { status, result } = await this.call<T | Draft>(req);
+    if (result.error) return result;
+    const data: InboxSendOutcome<T> =
+      status === 202
+        ? { kind: "draft", draft: result.data as Draft }
+        : { kind: "sent", email: result.data as T };
+    return { data, error: null };
+  }
+
+  private async call<T>({
     method,
     path,
     body,
     query,
     idempotencyKey,
     headers: extraHeaders,
-  }: DoRequest): Promise<Result<T>> {
+  }: DoRequest): Promise<{ status: number | null; result: Result<T> }> {
+    if (hasDotSegment(path)) {
+      const error: ErrorResponse = {
+        name: "validation_error",
+        message: 'An id in the request path is empty, "." or "..".',
+        statusCode: null,
+        retryAfter: null,
+      };
+      return { status: null, result: { data: null, error } };
+    }
     const url = `${this.baseUrl}${path}${queryString(query)}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.#apiKey}`,
@@ -126,7 +173,12 @@ export class HttpClient {
     for (const [key, value] of Object.entries(extraHeaders ?? {})) {
       if (value !== undefined) headers[key] = value;
     }
-    const init: RequestInit = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };
+    // A `wait` query asks the API to hold its answer up to that many seconds
+    // (long-poll), so the deadline has to outlast it.
+    const wait = Number(query?.wait ?? 0);
+    const timeoutMs =
+      wait > 0 ? Math.max(this.timeoutMs, wait * 1000 + LONG_POLL_MARGIN_MS) : this.timeoutMs;
+    const init: RequestInit = { method, headers, signal: AbortSignal.timeout(timeoutMs) };
     if (body !== undefined && method !== "GET" && method !== "DELETE") {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
@@ -142,8 +194,9 @@ export class HttpClient {
         name: "application_error",
         message: cause instanceof Error ? cause.message : String(cause),
         statusCode: null,
+        retryAfter: null,
       };
-      return { data: null, error };
+      return { status: null, result: { data: null, error } };
     }
 
     const text = await response.text();
@@ -156,9 +209,11 @@ export class HttpClient {
       }
     }
 
+    const status = response.status;
     if (!response.ok) {
-      return { data: null, error: toErrorResponse(parsed, response.status) };
+      const retryAfter = retryAfterSeconds(response.headers.get("retry-after"));
+      return { status, result: { data: null, error: toErrorResponse(parsed, status, retryAfter) } };
     }
-    return { data: parsed as T, error: null };
+    return { status, result: { data: parsed as T, error: null } };
   }
 }

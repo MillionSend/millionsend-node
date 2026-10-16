@@ -9,7 +9,9 @@ export interface Captured {
 }
 
 /** A MillionSend client backed by a mock fetch that records every request. */
-export function makeClient(response: { status?: number; body?: unknown } = {}) {
+export function makeClient(
+  response: { status?: number; body?: unknown; headers?: Record<string, string> } = {},
+) {
   const calls: Captured[] = [];
   const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const headers = { ...((init?.headers as Record<string, string> | undefined) ?? {}) };
@@ -22,7 +24,7 @@ export function makeClient(response: { status?: number; body?: unknown } = {}) {
     });
     return new Response(JSON.stringify(response.body ?? { id: "id_1" }), {
       status: response.status ?? 200,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...response.headers },
     });
   });
   const ms = new MillionSend("ms_test", {

@@ -107,6 +107,34 @@ describe("request wiring", () => {
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
+  it("stretches the deadline past a long-poll `wait`", async () => {
+    // Answers after 100 ms unless the request is aborted first.
+    const fetchImpl = vi.fn(
+      (_url: string | URL, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve(new Response('{"object":"list","data":[],"has_more":false}')),
+            100,
+          );
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(init.signal?.reason);
+          });
+        }),
+    );
+    const ms = new MillionSend("ms_test", {
+      baseUrl: "https://api.test",
+      fetch: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 20,
+    });
+
+    const plain = await ms.emails.receiving.list();
+    expect(plain.error?.statusCode).toBeNull();
+    const polled = await ms.emails.receiving.list({ wait: 1 });
+    expect(polled.error).toBeNull();
+    expect(polled.data?.data).toEqual([]);
+  });
+
   it("maps camelCase inputs to the snake_case wire and omits undefined", async () => {
     const { ms, calls } = makeClient();
     await ms.emails.send({
@@ -159,7 +187,12 @@ describe("request wiring", () => {
     });
     const res = await ms.emails.send({ from: "a@x.dev", to: "b@x.dev", subject: "s", text: "t" });
     expect(res.data).toBeNull();
-    expect(res.error).toEqual({ statusCode: 422, name: "validation_error", message: "bad" });
+    expect(res.error).toEqual({
+      statusCode: 422,
+      name: "validation_error",
+      message: "bad",
+      retryAfter: null,
+    });
   });
 
   it("passes the all_recipients_suppressed 422 through by name", async () => {
@@ -191,6 +224,28 @@ describe("request wiring", () => {
     expect(res.error?.message).toMatch(/ECONNREFUSED/);
   });
 
+  it("never sends a path an empty, '.' or '..' id would turn into another resource's", async () => {
+    const { ms, calls } = makeClient();
+    for (const res of [
+      await ms.inboxes.labels.remove("inbox_1", ".."),
+      await ms.inboxes.threads.remove("inbox_1", "."),
+      await ms.emails.get(""),
+    ]) {
+      expect(res).toEqual({
+        data: null,
+        error: {
+          name: "validation_error",
+          message: 'An id in the request path is empty, "." or "..".',
+          statusCode: null,
+          retryAfter: null,
+        },
+      });
+    }
+    expect(calls).toEqual([]);
+    await ms.inboxes.labels.remove("inbox_1", "...");
+    expect(calls[0]?.url).toBe("https://api.test/inboxes/inbox_1/labels/...");
+  });
+
   it("falls back to a generic error when the body is not the canonical shape", async () => {
     const { ms } = makeClient({ status: 500, body: "gateway boom" });
     const res = await ms.emails.get("e1");
@@ -198,6 +253,45 @@ describe("request wiring", () => {
       name: "application_error",
       message: "Request failed with status 500",
       statusCode: 500,
+      retryAfter: null,
     });
+  });
+
+  it("reads retry-after into retryAfter: whole seconds, else null", async () => {
+    const body = { statusCode: 503, name: "name_review_unavailable", message: "try again shortly" };
+    const { ms } = makeClient({ status: 503, body, headers: { "retry-after": "300" } });
+    expect((await ms.inboxes.create()).error).toEqual({ ...body, retryAfter: 300 });
+
+    const { ms: none } = makeClient({ status: 503, body });
+    expect((await none.inboxes.create()).error?.retryAfter).toBeNull();
+
+    const date = { "retry-after": "Fri, 16 Oct 2026 12:00:00 GMT" };
+    const { ms: dated } = makeClient({ status: 503, body, headers: date });
+    expect((await dated.inboxes.create()).error?.retryAfter).toBeNull();
+  });
+
+  it("a 404 from an unknown route is not_found as JSON, application_error as plain text", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response("404 Not Found", { status: 404, headers: { "content-type": "text/plain" } }),
+    );
+    const ms = new MillionSend("ms_test", {
+      baseUrl: "https://api.test",
+      fetch: fetchImpl as unknown as typeof fetch,
+    });
+    expect((await ms.inboxes.list()).error).toEqual({
+      name: "application_error",
+      message: "Request failed with status 404",
+      statusCode: 404,
+      retryAfter: null,
+    });
+
+    const body = {
+      statusCode: 404,
+      name: "not_found",
+      message: "The requested endpoint does not exist.",
+    };
+    const { ms: json } = makeClient({ status: 404, body });
+    expect((await json.inboxes.list()).error).toEqual({ ...body, retryAfter: null });
   });
 });
