@@ -61,7 +61,12 @@ describe("insights", () => {
     });
     const res = await ms.emails.getInsights("missing");
     expect(res.data).toBeNull();
-    expect(res.error).toEqual({ statusCode: 404, name: "not_found", message: "Email not found" });
+    expect(res.error).toEqual({
+      statusCode: 404,
+      name: "not_found",
+      message: "Email not found",
+      retryAfter: null,
+    });
   });
 
   it("tolerates unknown future band/severity/status values (open sets)", async () => {
@@ -1130,7 +1135,7 @@ describe("emails.receiving", () => {
     };
     const { ms: refused } = makeClient({ status: 403, body: quarantined });
     const err = await refused.emails.receiving.forward(EMAIL_ID, { to: "ops@acme.dev" });
-    expect(err).toEqual({ data: null, error: quarantined });
+    expect(err).toEqual({ data: null, error: { ...quarantined, retryAfter: null } });
   });
 
   it("remove erases; attachments list and get", async () => {
@@ -1526,7 +1531,7 @@ describe("inboxes", () => {
     const { ms: refused } = makeClient({ status: 403, body: agent });
     expect(await refused.inboxes.drafts.send(INBOX_ID, DRAFT_ID)).toEqual({
       data: null,
-      error: agent,
+      error: { ...agent, retryAfter: null },
     });
   });
 });

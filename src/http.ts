@@ -78,6 +78,11 @@ function hasDotSegment(path: string): boolean {
     .some((segment) => segment === "" || segment === "." || segment === "..");
 }
 
+/** `retry-after` in seconds; null when absent or not a whole number of seconds (the API sends only those). */
+function retryAfterSeconds(header: string | null): number | null {
+  return header !== null && /^\s*\d+\s*$/.test(header) ? Number(header) : null;
+}
+
 function queryString(query: Record<string, string | number | undefined> | undefined): string {
   if (!query) return "";
   const params = new URLSearchParams();
@@ -155,6 +160,7 @@ export class HttpClient {
         name: "validation_error",
         message: 'An id in the request path is empty, "." or "..".',
         statusCode: null,
+        retryAfter: null,
       };
       return { status: null, result: { data: null, error } };
     }
@@ -188,6 +194,7 @@ export class HttpClient {
         name: "application_error",
         message: cause instanceof Error ? cause.message : String(cause),
         statusCode: null,
+        retryAfter: null,
       };
       return { status: null, result: { data: null, error } };
     }
@@ -204,7 +211,8 @@ export class HttpClient {
 
     const status = response.status;
     if (!response.ok) {
-      return { status, result: { data: null, error: toErrorResponse(parsed, status) } };
+      const retryAfter = retryAfterSeconds(response.headers.get("retry-after"));
+      return { status, result: { data: null, error: toErrorResponse(parsed, status, retryAfter) } };
     }
     return { status, result: { data: parsed as T, error: null } };
   }
