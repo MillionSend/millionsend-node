@@ -25,7 +25,7 @@ const ms = new MillionSend("ms_123"); // Cloud; self-hosted: { baseUrl: "https:/
 
 const { data, error } = await ms.emails.send({
   from: "Acme <onboarding@acme.dev>",
-  to: "delivered@resend.dev",
+  to: "success@simulator.amazonses.com",
   subject: "Hello from MillionSend",
   html: "<strong>It works!</strong>",
 });
