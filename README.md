@@ -73,7 +73,9 @@ Inboxes add `inbox_send_policy` (403, a send the inbox's rules or the shared dom
 `inbox_send_cap_reached` (429, the inbox's or the team's daily cap), `approval_required` (403),
 `email_quarantined` (403), `email_blocked` (410, a download of an email that carries malware),
 `too_many_waits` (429, too many concurrent long-polls) and `name_review_unavailable` (503, a
-name on the shared domain can't be reviewed yet).
+name on the shared domain can't be reviewed yet). A quarantine release adds `trust_not_allowed`
+(403) and `held_by_screening` (409), see [Inboxes](#inboxes); it answers `forbidden` (403) and
+`screening_unavailable` (503) only to MCP clients.
 
 ```ts
 const { data, error } = await ms.emails.get(id);
@@ -243,7 +245,7 @@ await ms.inboxes.safety.update(inbox.id, { acceptFrom: "allowlist", allowlist: [
 
 // Quarantine: held mail, kept until a person releases it
 await ms.inboxes.quarantine.list(inbox.id);
-await ms.inboxes.quarantine.release(inbox.id, emailId, { trustSender: true });
+await ms.inboxes.quarantine.release(inbox.id, emailId);
 
 // Threads and their messages
 await ms.inboxes.threads.list(inbox.id, { folders: ["inbox", "archive"], read: false });
@@ -280,6 +282,13 @@ An agent's reply to a Reply-To at another organization is held that way too, wit
 A key restricted to the inbox cannot send a draft that waits for approval
 (`403 approval_required`); a person in the dashboard or a full-access team key approves it.
 Hosted agent settings (`/inboxes/:id/agent`) are not exposed: MillionSend runs no agent of its own.
+
+From MillionSend v0.16.0, on an agent inbox with `screening` on, mail held before screening ran
+(`not_allowlisted`, `unauthenticated_sender`, `failed_auth`) is screened at release when screening
+can run: if it finds prompt injection or phishing, the email stays held as `injection` or
+`phishing` (`409 held_by_screening`). `trustSender: true` also adds the sender to the
+allowlist, only for mail held as `not_allowlisted` from a sender that authenticated
+(`sender_trust: "external"`); anything else answers `403 trust_not_allowed`.
 
 An inbox never expires unless `expiresIn` says so, and its `name` takes up to 320
 characters. `domainId` takes a `domains.list` row instead of `emailAddress`: the
