@@ -695,11 +695,14 @@ export interface RemoveDomainResponse {
 
 // ---- webhooks ------------------------------------------------------------
 export type WebhookEvent =
+  | "email.scheduled"
   | "email.sent"
   | "email.delivered"
   | "email.delivery_delayed"
   | "email.bounced"
   | "email.complained"
+  | "email.failed"
+  | "email.suppressed"
   | "email.opened"
   | "email.clicked"
   | "deliverability.warning"

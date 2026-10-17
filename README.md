@@ -479,8 +479,9 @@ const { data } = await ms.webhooks.rotate(id, { overlapHours: 24 }); // or { sig
 data.signing_secret; data.previous_secret_expires_at; // null when the old secret is dropped at once
 ```
 
-Subscribable events include `email.*` (with `email.received`), `deliverability.*`,
-`quota.*`, `contact.*` (`created`, `updated`, `deleted`, `unsubscribed`,
+Subscribable events include `email.*` (with `email.scheduled`, `email.failed`,
+`email.suppressed` and `email.received`), `deliverability.*`, `quota.*`,
+`contact.*` (`created`, `updated`, `deleted`, `unsubscribed`,
 `resubscribed`, `topic_opt_in`, `topic_opt_out`), `suppression.added` /
 `suppression.removed`, and the `inbox.*` events (`inbox.created`, `inbox.updated`,
 `inbox.deleted`, `inbox.expired`, `inbox.thread.created`, `inbox.thread.folder.updated`,
@@ -490,6 +491,27 @@ Subscribable events include `email.*` (with `email.received`), `deliverability.*
 list them by name. `inboxIds` limits an endpoint's inbox events and `email.received`
 to those inboxes (`null` = every inbox). Inbox events from sends made in the dashboard
 carry `data.source: "dashboard"`.
+
+`email.scheduled`, `email.failed` and `email.suppressed` need MillionSend v0.15.1 or later:
+an older server answers `422 validation_error` to a webhook that names one. Unlike inbox
+events, they also reach endpoints subscribed to every event.
+
+- `email.scheduled`: accepted with a future `scheduledAt`; no extra `data`. Rescheduling
+  with `emails.update` fires nothing.
+- `email.failed`: it won't be sent, or SES refused it after `email.sent`.
+  `data.failed.reason` is `domain_not_verified`, `domain_deleted`, `body_missing`,
+  `body_unreadable`, `message_rejected`, `retries_exhausted`, `send_interrupted` or
+  `provider_error` (any other error).
+- `email.suppressed`: it won't be sent. `data.suppressed` is `{ type, message, reason }`:
+  `type` is `OnAccountSuppressionList`, `Unsubscribed` or `Ineligible`, and `reason` is
+  `recipient_suppressed`, `contact_unsubscribed`, `topic_unsubscribed`, `contact_missing`,
+  `contact_recipient_mismatch`, `broadcast_missing`, `topic_missing` or `ineligible`. An
+  `emails.send` the suppression list alone refuses with `422 all_recipients_suppressed`
+  fires it too.
+
+New `reason` and `type` values can appear. From v0.15.1, `suppression.added` and
+`suppression.removed` carry `data.source_id`: the email whose bounce or complaint created
+the entry, or `null`.
 
 ### API keys
 
