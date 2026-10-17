@@ -12,7 +12,7 @@ Each feature needs this MillionSend version or later: an older instance refuses 
 
 | MillionSend | Features |
 |---|---|
-| v0.15.1 | `email.scheduled`, `email.failed` and `email.suppressed`; `source_id` on `suppression.added` and `suppression.removed`; the `suppressed` email kept when the suppression list refuses an `emails.send` |
+| v0.15.1 | `email.scheduled`, `email.failed` and `email.suppressed`; `source_id` on `suppression.added` and `suppression.removed`; the `suppressed` email kept when the suppression list alone refuses an `emails.send` |
 
 ## 0.9.0 — 2026-10-16
 
