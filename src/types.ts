@@ -695,13 +695,19 @@ export interface RemoveDomainResponse {
 
 // ---- webhooks ------------------------------------------------------------
 export type WebhookEvent =
+  | "email.scheduled"
   | "email.sent"
   | "email.delivered"
   | "email.delivery_delayed"
   | "email.bounced"
   | "email.complained"
+  | "email.failed"
+  | "email.suppressed"
   | "email.opened"
   | "email.clicked"
+  // email.prefetched reaches only endpoints that list it; "all events" never includes it.
+  | "email.prefetched"
+  | "email.received"
   | "deliverability.warning"
   | "deliverability.paused"
   | "quota.warning"
@@ -716,7 +722,6 @@ export type WebhookEvent =
   | "contact.topic_opt_out"
   | "suppression.added"
   | "suppression.removed"
-  | "email.received"
   // Inbox events reach only endpoints that list them; "all events" never includes them.
   | "inbox.created"
   | "inbox.updated"

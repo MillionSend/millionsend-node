@@ -64,7 +64,10 @@ No method throws for an API error — every call resolves to `{ data, error }`.
 `null` when it has none.
 
 `emails.send` and `batch.send` answer `422 all_recipients_suppressed` when every
-`to` recipient is on the suppression list or opted out of the send's `topicId`.
+`to` recipient is on the suppression list or opted out of the send's `topicId`. From
+MillionSend v0.15.1, an `emails.send` the suppression list alone refuses still leaves a
+metadata-only `suppressed` email, which fires `email.suppressed`; each retry leaves
+another, even with the same `idempotencyKey` (a refused send doesn't hold its key).
 
 Inboxes add `inbox_send_policy` (403, a send the inbox's rules or the shared domain hold),
 `inbox_send_cap_reached` (429, the inbox's or the team's daily cap), `approval_required` (403),
@@ -479,17 +482,39 @@ const { data } = await ms.webhooks.rotate(id, { overlapHours: 24 }); // or { sig
 data.signing_secret; data.previous_secret_expires_at; // null when the old secret is dropped at once
 ```
 
-Subscribable events include `email.*` (with `email.received`), `deliverability.*`,
+Subscribable events include `email.*` (with `email.scheduled`, `email.failed`,
+`email.suppressed`, `email.prefetched` and `email.received`), `deliverability.*`,
 `quota.*`, `contact.*` (`created`, `updated`, `deleted`, `unsubscribed`,
 `resubscribed`, `topic_opt_in`, `topic_opt_out`), `suppression.added` /
 `suppression.removed`, and the `inbox.*` events (`inbox.created`, `inbox.updated`,
 `inbox.deleted`, `inbox.expired`, `inbox.thread.created`, `inbox.thread.folder.updated`,
 `inbox.thread.labels.updated`, `inbox.email.received`, `inbox.email.sent`,
 `inbox.email.quarantined`, `inbox.draft.created`, `inbox.draft.updated`,
-`inbox.draft.sent`, `inbox.draft.deleted`). Inbox events reach only endpoints that
-list them by name. `inboxIds` limits an endpoint's inbox events and `email.received`
-to those inboxes (`null` = every inbox). Inbox events from sends made in the dashboard
-carry `data.source: "dashboard"`.
+`inbox.draft.sent`, `inbox.draft.deleted`). `email.prefetched` and inbox events reach
+only endpoints that list them by name. `inboxIds` limits an endpoint's inbox events
+and `email.received` to those inboxes (`null` = every inbox). Inbox events from sends
+made in the dashboard carry `data.source: "dashboard"`.
+
+`email.scheduled`, `email.failed` and `email.suppressed` need MillionSend v0.15.1 or later:
+an older server answers `422 validation_error` to a webhook that names one. Unlike inbox
+events, they also reach endpoints subscribed to every event.
+
+- `email.scheduled`: accepted with a future `scheduledAt`; no extra `data`. Rescheduling
+  with `emails.update` fires nothing.
+- `email.failed`: it won't be sent, or SES refused it after `email.sent`.
+  `data.failed.reason` is `domain_not_verified`, `domain_deleted`, `body_missing`,
+  `body_unreadable`, `message_rejected`, `retries_exhausted`, `send_interrupted` or
+  `provider_error` (any other error).
+- `email.suppressed`: it won't be sent. `data.suppressed` is `{ type, message, reason }`:
+  `type` is `OnAccountSuppressionList`, `Unsubscribed` or `Ineligible`, and `reason` is
+  `recipient_suppressed`, `contact_unsubscribed`, `topic_unsubscribed`, `contact_missing`,
+  `contact_recipient_mismatch`, `broadcast_missing`, `topic_missing` or `ineligible`. An
+  `emails.send` the suppression list alone refuses with `422 all_recipients_suppressed`
+  fires it too.
+
+New `reason` and `type` values can appear. From v0.15.1, `suppression.added` and
+`suppression.removed` carry `data.source_id`: the email whose bounce or complaint created
+the entry, or `null`.
 
 ### API keys
 

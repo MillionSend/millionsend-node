@@ -2,7 +2,19 @@
 
 Versions follow the MillionSend API they target; the API stays wire-compatible with Resend.
 
-## 0.9.0 — unreleased
+## 0.10.0 — 2026-10-17
+
+- `WebhookEvent` names `email.scheduled`, `email.failed` and `email.suppressed`.
+- The README covers their `data` (`failed.reason`; `suppressed.type`, `message` and `reason`), the `source_id` that `suppression.added` and `suppression.removed` carry, and the `suppressed` email kept when the suppression list alone refuses an `emails.send`.
+- `WebhookEvent` names the opt-in `email.prefetched` too: it reaches only endpoints that list it.
+
+Each feature needs this MillionSend version or later: an older instance refuses a webhook that names one of the three events with `422 validation_error`.
+
+| MillionSend | Features |
+|---|---|
+| v0.15.1 | `email.scheduled`, `email.failed` and `email.suppressed`; `source_id` on `suppression.added` and `suppression.removed`; the `suppressed` email kept when the suppression list alone refuses an `emails.send` |
+
+## 0.9.0 — 2026-10-16
 
 - `emails.receiving`: `list` (with `wait` long-polling and the `inboxId`, `to`, `from`, `since`, `subjectContains`, `unread`, `includeQuarantined` and `quarantined` filters), `get`, `reply`, `forward`, `remove`, and `attachments.list` / `attachments.get`.
 - `inboxes`: `create`, `list`, `get`, `update`, `remove`, plus `safety`, `codes.latest`, `quarantine`, `labels`, `threads` (with `threads.emails`) and `drafts` (with `send` and `reject`).
