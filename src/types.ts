@@ -705,6 +705,8 @@ export type WebhookEvent =
   | "email.suppressed"
   | "email.opened"
   | "email.clicked"
+  // email.prefetched reaches only endpoints that list it; "all events" never includes it.
+  | "email.prefetched"
   | "deliverability.warning"
   | "deliverability.paused"
   | "quota.warning"
