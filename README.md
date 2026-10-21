@@ -134,7 +134,7 @@ await ms.emails.send({
   html: "<p>Hi</p>", text: "Hi",
   scheduledAt: "2026-09-01T09:00:00Z",       // or "in 2 hours"
   tags: [{ name: "campaign", value: "launch" }],
-  topicId,                                   // skip opted-out recipients, add unsubscribe link
+  topicId,                                   // skip opted-out recipients
   attachments: [{ filename: "hi.txt", content: Buffer.from("hi"), contentType: "text/plain" }],
   headers: { "X-Entity-Ref-ID": "123" },
 }, { idempotencyKey });                      // POST /emails

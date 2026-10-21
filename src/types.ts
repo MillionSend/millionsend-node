@@ -72,7 +72,10 @@ export interface SendEmailOptions {
   /** ISO 8601 with offset, or relative ("in 2 hours"); up to 30 days ahead. */
   scheduledAt?: string;
   tags?: Tag[];
-  /** Recipients opted out of the topic are skipped and an unsubscribe link is added. */
+  /**
+   * Recipients opted out of the topic are skipped. A send to one address that
+   * is a contact also gets that contact's unsubscribe link.
+   */
   topicId?: string | null;
   attachments?: Attachment[];
   /** Extra message headers; transport headers are rejected by the API. */
