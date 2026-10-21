@@ -5,7 +5,7 @@ const DEFAULT_BASE_URL = "https://api.millionsend.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** Time a long-poll answer may take to arrive after the server's own `wait` deadline. */
 const LONG_POLL_MARGIN_MS = 10_000;
-const SDK_VERSION = "0.10.0";
+const SDK_VERSION = "0.11.0";
 
 export interface MillionSendOptions {
   /**

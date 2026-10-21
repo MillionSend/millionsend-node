@@ -254,10 +254,14 @@ export interface ContactId {
   id: string;
 }
 
-/** A custom property as returned by GET /contacts/:id — typed by the property definition. */
+/**
+ * A custom property as returned by GET /contacts/:id — typed by the property definition.
+ * A `date` value is the text as stored; one that does not read as a date comes back as `string`.
+ */
 export type ContactPropertyValue =
   | { type: "string"; value: string }
-  | { type: "number"; value: number };
+  | { type: "number"; value: number }
+  | { type: "date"; value: string };
 
 export interface Contact {
   object: "contact";
@@ -377,7 +381,12 @@ export interface RemoveContactSegmentResponse {
 }
 
 // ---- contact properties --------------------------------------------------
-export type ContactPropertyType = "string" | "number";
+/**
+ * `date` is a MillionSend extension: an ISO 8601 date or date-time, or Unix time in
+ * seconds or milliseconds from 2000 to 2100. A value or fallback that does not fit the
+ * property's type gets `422 validation_error`.
+ */
+export type ContactPropertyType = "string" | "number" | "date";
 
 export interface CreateContactPropertyOptions {
   key: string;

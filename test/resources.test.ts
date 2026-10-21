@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DomainSendingMode, ScoreBand } from "../src/index.js";
+import type { ContactPropertyValue, DomainSendingMode, ScoreBand } from "../src/index.js";
 import { makeClient, pathOf } from "./helper.js";
 
 describe("emails", () => {
@@ -566,12 +566,18 @@ describe("contacts: segments, topics and batch", () => {
         last_name: null,
         created_at: "2026-01-01T00:00:00.000Z",
         unsubscribed: false,
-        properties: { plan: { type: "string", value: "pro" }, seats: { type: "number", value: 3 } },
+        properties: {
+          plan: { type: "string", value: "pro" },
+          seats: { type: "number", value: 3 },
+          trial_ends: { type: "date", value: "2026-01-08" },
+        },
       },
     });
     const res = await ms.contacts.get("c1");
     expect(res.data?.properties.plan).toEqual({ type: "string", value: "pro" });
     expect(res.data?.properties.seats).toEqual({ type: "number", value: 3 });
+    const date: ContactPropertyValue = { type: "date", value: "2026-01-08" };
+    expect(res.data?.properties.trial_ends).toEqual(date);
   });
 });
 
@@ -895,6 +901,20 @@ describe("contactProperties", () => {
     expect(calls[4]).toMatchObject({
       method: "DELETE",
       url: "https://api.test/contact-properties/p1",
+    });
+  });
+
+  it("create takes the date type", async () => {
+    const { ms, calls } = makeClient({ body: { object: "contact_property", id: "p2" } });
+    await ms.contactProperties.create({
+      key: "trial_ends",
+      type: "date",
+      fallbackValue: "2026-01-08",
+    });
+    expect(calls[0]?.body).toEqual({
+      key: "trial_ends",
+      type: "date",
+      fallback_value: "2026-01-08",
     });
   });
 });

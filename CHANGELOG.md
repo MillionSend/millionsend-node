@@ -2,6 +2,18 @@
 
 Versions follow the MillionSend API they target; the API stays wire-compatible with Resend.
 
+## 0.11.0 — 2026-10-21
+
+- `ContactPropertyType` adds `date`, a MillionSend extension: `contactProperties.create` takes it, and `list` and `get` return it.
+- `ContactPropertyValue` adds `{ type: "date"; value: string }`, the text as stored. An exhaustive `switch` over a contact property's `type` needs a `date` case.
+- The README covers what a date property takes, the `422 validation_error` for a value or `fallbackValue` that does not fit its type, and the segment ops `before`, `after`, `in_last_days` and `not_in_last_days` on `created_at` and `property:<key>`.
+
+Each feature needs this MillionSend version or later: an older instance refuses `type: "date"` with `422 validation_error`.
+
+| MillionSend | Features |
+|---|---|
+| v0.22.0 | the `date` contact property type; the `before`, `after`, `in_last_days` and `not_in_last_days` segment ops |
+
 ## 0.10.0 — 2026-10-17
 
 - `WebhookEvent` names `email.scheduled`, `email.failed` and `email.suppressed`.
