@@ -385,16 +385,25 @@ data.data; // [{ id, name, description, subscription: "opt_in" | "opt_out", expl
 ```
 
 `contact.properties` on `get` is typed per property: `{ plan: { type: "string", value: "pro" } }`.
+A `date` property's value is the text as stored, `{ type: "date", value: "2026-01-08" }`; a
+stored value that does not read as a date comes back as `string`.
 
 ### Contact properties
 
 ```ts
 await ms.contactProperties.create({ key: "plan", type: "string", fallbackValue: "free" });
+await ms.contactProperties.create({ key: "trial_ends", type: "date" }); // MillionSend extension
 await ms.contactProperties.list();
 await ms.contactProperties.get(id);
 await ms.contactProperties.update({ id, fallbackValue: null }); // null clears
 await ms.contactProperties.remove(id);
 ```
+
+The type is `string`, `number` or `date`. `date` needs MillionSend v0.22.0 or later (an
+older server answers `422 validation_error`) and takes an ISO 8601 date (`2026-01-08`, read
+as midnight UTC), a date-time (`2026-01-08T10:30:00Z` or `2026-01-08 10:30`, UTC when it
+names no zone), or Unix time in seconds or milliseconds from 2000 to 2100. A contact value or
+`fallbackValue` that does not fit its property's type gets `422 validation_error`.
 
 ### Topics
 
@@ -569,6 +578,10 @@ await ms.segments.update(id, { name: "Pro tier" });
 await ms.segments.remove(id);
 ```
 
+From MillionSend v0.22.0, `created_at` and `property:<key>` take four date ops: `before` and
+`after` with an ISO 8601 date or date-time, and `in_last_days` and `not_in_last_days` with a
+whole number of days as a string, from `"1"` to `"36500"`.
+
 ### Deliverability (MillionSend extension)
 
 The account-level deliverability score over the trailing 30 days. Scores are
@@ -607,8 +620,8 @@ match `resend`. Notes:
   answered with `422`. `templates.publish` is a no-op (every save is live).
 - **MillionSend extensions** (no Resend counterpart): `segments`,
   `deliverability`, `usage`, `emails.getInsights`, `contacts.batch`,
-  `contacts.preferencesLink`, `webhooks.rotate`, the `origin` field on
-  suppressions, `emails.receiving.reply` / `remove`, `inboxes.safety`,
+  `contacts.preferencesLink`, `webhooks.rotate`, the `date` contact property type,
+  the `origin` field on suppressions, `emails.receiving.reply` / `remove`, `inboxes.safety`,
   `inboxes.codes`, `inboxes.quarantine`, `inboxes.drafts.reject`, the `username` and
   `domainId` of `inboxes.create`, and `error.retryAfter`.
 - **`emails.receiving.forward(id, payload)`** forwards server-side, from your
