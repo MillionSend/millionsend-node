@@ -46,7 +46,7 @@
     "prepack": "pnpm build"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@types/node": "^22.20.1",
     "typescript": "^7.0.2",
     "vite": "^7.3.7",
